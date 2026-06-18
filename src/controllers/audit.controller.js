@@ -7,6 +7,7 @@ const {
   runLighthouseAudit,
 } = require("../services/lighthouseAudit.service");
 const { auditRobotsTxt } = require("../services/robotsAudit.service");
+const { auditSitemap } = require("../services/sitemapAudit.service");
 const {
   generateRecommendations,
 } = require("../services/recommendationAudit.service");
@@ -43,13 +44,20 @@ async function auditWebsite(req, res) {
       browserSession.remoteDebuggingPort
     ).catch(createFailedLighthouseResult);
     const robots = await robotsPromise;
-    const recommendations = generateRecommendations(pageAudit, lighthouse, robots);
+    const sitemap = await auditSitemap(url, robots);
+    const recommendations = generateRecommendations(
+      pageAudit,
+      lighthouse,
+      robots,
+      sitemap
+    );
 
     res.json({
       success: true,
       url,
       ...pageAudit,
       robots,
+      sitemap,
       lighthouse,
       recommendations,
       summary: {
@@ -57,6 +65,8 @@ async function auditWebsite(req, res) {
         failedRequestCount: pageAudit.failedRequests.length,
         imageMissingAltCount: pageAudit.images.missingAlt,
         robotsIssues: robots.issues.length,
+        sitemapIssues: sitemap.issues.length,
+        indexabilityIssues: pageAudit.indexability.issues.length,
         recommendationCount: recommendations.length,
         lighthouse,
       },

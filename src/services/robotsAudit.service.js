@@ -49,11 +49,18 @@ function parseRobotsTxt(content) {
   const groups = [];
   const sitemapUrls = [];
   let currentGroup = null;
+  let currentGroupHasRules = false;
 
   content.split(/\r?\n/).forEach((line) => {
     const cleanLine = line.split("#")[0].trim();
 
-    if (!cleanLine || !cleanLine.includes(":")) {
+    if (!cleanLine) {
+      currentGroup = null;
+      currentGroupHasRules = false;
+      return;
+    }
+
+    if (!cleanLine.includes(":")) {
       return;
     }
 
@@ -69,15 +76,18 @@ function parseRobotsTxt(content) {
     }
 
     if (field === "user-agent") {
-      if (currentGroup && currentGroup.rules.length === 0) {
-        currentGroup.userAgents.push(value.toLowerCase());
+      const userAgent = value.toLowerCase();
+
+      if (currentGroup && !currentGroupHasRules) {
+        currentGroup.userAgents.push(userAgent);
       } else {
         currentGroup = {
-          userAgents: [value.toLowerCase()],
+          userAgents: [userAgent],
           rules: [],
         };
         groups.push(currentGroup);
       }
+      currentGroupHasRules = false;
       return;
     }
 
@@ -86,6 +96,7 @@ function parseRobotsTxt(content) {
         directive: field,
         path: value,
       });
+      currentGroupHasRules = true;
     }
   });
 
@@ -108,31 +119,32 @@ function pathMatchesRobotsRule(pathname, rulePath) {
     return false;
   }
 
-  if (rulePath === "/") {
-    return true;
-  }
+  const escapedPattern = rulePath
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*");
+  const regexPattern = rulePath.endsWith("$")
+    ? `^${escapedPattern.slice(0, -2)}$`
+    : `^${escapedPattern}`;
 
-  const normalizedRulePath = rulePath.replace(/\*.*$/, "");
-  return pathname.startsWith(normalizedRulePath);
+  return new RegExp(regexPattern).test(pathname);
 }
 
-function getApplicableRobotsRules(parsedRobots) {
+function getGenericRobotsRules(parsedRobots) {
   return parsedRobots.groups
     .filter((group) => group.userAgents.includes("*"))
     .flatMap((group) => group.rules);
 }
 
-function checkHomepageAllowed(applicableRules, homepageUrl) {
-  const homepagePath = new URL(homepageUrl).pathname;
+function getStrongestMatchingRule(applicableRules, pathname) {
   const matchingRules = applicableRules.filter((rule) =>
-    pathMatchesRobotsRule(homepagePath, rule.path)
+    pathMatchesRobotsRule(pathname, rule.path)
   );
 
   if (matchingRules.length === 0) {
-    return true;
+    return null;
   }
 
-  const strongestRule = matchingRules.reduce((selectedRule, currentRule) => {
+  return matchingRules.reduce((selectedRule, currentRule) => {
     if (!selectedRule || currentRule.path.length > selectedRule.path.length) {
       return currentRule;
     }
@@ -146,8 +158,27 @@ function checkHomepageAllowed(applicableRules, homepageUrl) {
 
     return selectedRule;
   }, null);
+}
+
+function checkHomepageAllowed(applicableRules, homepageUrl) {
+  const homepagePath = new URL(homepageUrl).pathname;
+  const strongestRule = getStrongestMatchingRule(applicableRules, homepagePath);
+
+  if (!strongestRule) {
+    return true;
+  }
 
   return strongestRule.directive !== "disallow";
+}
+
+function checkBlocksAllCrawlers(applicableRules) {
+  const strongestRule = getStrongestMatchingRule(applicableRules, "/");
+
+  return (
+    Boolean(strongestRule) &&
+    strongestRule.directive === "disallow" &&
+    strongestRule.path === "/"
+  );
 }
 
 function createRobotsIssues({
@@ -220,12 +251,9 @@ async function auditRobotsTxt(url) {
 
     const content = await response.text();
     const parsedRobots = parseRobotsTxt(content);
-    const applicableRules = getApplicableRobotsRules(parsedRobots);
+    const applicableRules = getGenericRobotsRules(parsedRobots);
     const allowsHomepage = checkHomepageAllowed(applicableRules, homepageUrl);
-    const blocksAll =
-      applicableRules.some(
-        (rule) => rule.directive === "disallow" && rule.path === "/"
-      ) && !allowsHomepage;
+    const blocksAll = checkBlocksAllCrawlers(applicableRules);
 
     const audit = {
       exists: true,
@@ -264,4 +292,7 @@ async function auditRobotsTxt(url) {
 module.exports = {
   auditRobotsTxt,
   parseRobotsTxt,
+  checkBlocksAllCrawlers,
+  checkHomepageAllowed,
+  getGenericRobotsRules,
 };

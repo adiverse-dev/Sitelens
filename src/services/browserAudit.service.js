@@ -12,6 +12,7 @@ const {
   createHeadingHierarchyAudit,
 } = require("./headingAudit.service");
 const { collectImageAudit } = require("./imageAudit.service");
+const { collectIndexabilityAudit } = require("./indexabilityAudit.service");
 const { collectSeoAudit } = require("./seoAudit.service");
 const { collectSocialAudit } = require("./socialAudit.service");
 
@@ -76,6 +77,7 @@ async function collectPageAudit(page, url) {
   const headingHierarchy = createHeadingHierarchyAudit(headings);
   const { seo, canonical } = await collectSeoAudit(page, headings);
   const { openGraph, twitterCard } = await collectSocialAudit(page);
+  const indexability = await collectIndexabilityAudit(page);
   const images = await collectImageAudit(page);
   const screenshotPath = createScreenshotPath(url);
 
@@ -94,6 +96,7 @@ async function collectPageAudit(page, url) {
     canonical,
     openGraph,
     twitterCard,
+    indexability,
     headingHierarchy,
     images,
     consoleErrors,

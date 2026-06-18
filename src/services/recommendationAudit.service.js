@@ -7,10 +7,17 @@ function addRecommendation(recommendations, severity, category, issue, fix) {
   });
 }
 
-function generateRecommendations(pageAudit, lighthouse, robots) {
+function generateRecommendations(pageAudit, lighthouse, robots, sitemap) {
   const recommendations = [];
-  const { seo, images, canonical, openGraph, twitterCard, headingHierarchy } =
-    pageAudit;
+  const {
+    seo,
+    images,
+    canonical,
+    openGraph,
+    twitterCard,
+    headingHierarchy,
+    indexability,
+  } = pageAudit;
 
   if (seo.h1.count === 0) {
     addRecommendation(
@@ -150,6 +157,86 @@ function generateRecommendations(pageAudit, lighthouse, robots) {
       "Crawlability",
       "robots.txt does not reference a sitemap",
       "Add a Sitemap directive to robots.txt."
+    );
+  }
+
+  if (sitemap.issues.includes("Sitemap is missing")) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "Indexability",
+      "Sitemap is missing",
+      "Create and submit a sitemap.xml file."
+    );
+  }
+
+  if (sitemap.issues.includes("Sitemap is unreachable")) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Indexability",
+      "Sitemap is unreachable",
+      "Check sitemap URL availability, redirects, DNS, and timeout behavior."
+    );
+  }
+
+  if (sitemap.issues.some((issue) => issue.startsWith("Sitemap returns non-200"))) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Indexability",
+      "Sitemap returns a non-200 status code",
+      "Make sure sitemap.xml is reachable and returns HTTP 200."
+    );
+  }
+
+  if (sitemap.issues.includes("Sitemap XML is invalid")) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "Indexability",
+      "Sitemap XML is invalid",
+      "Fix sitemap.xml so it uses valid XML with urlset or sitemapindex markup."
+    );
+  }
+
+  if (sitemap.issues.includes("Sitemap contains no URLs")) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Indexability",
+      "Sitemap contains no URLs",
+      "Populate sitemap.xml with indexable URLs."
+    );
+  }
+
+  if (sitemap.issues.includes("Sitemap does not contain lastmod tags")) {
+    addRecommendation(
+      recommendations,
+      "low",
+      "Indexability",
+      "Sitemap does not contain lastmod tags",
+      "Add lastmod tags to help search engines understand content freshness."
+    );
+  }
+
+  if (indexability.issues.includes("Page contains noindex directive")) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "Indexability",
+      "Page contains noindex directive",
+      "Remove noindex if the page should appear in search results."
+    );
+  }
+
+  if (indexability.issues.includes("Page contains nofollow directive")) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Indexability",
+      "Page contains nofollow directive",
+      "Remove nofollow if search engines should follow links on this page."
     );
   }
 
