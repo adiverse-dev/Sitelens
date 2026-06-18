@@ -31,6 +31,18 @@ function isValidHttpUrl(value) {
   }
 }
 
+function createCanonicalAudit(canonicalTags) {
+  const firstCanonical = canonicalTags[0] || null;
+  const canonicalUrl = firstCanonical?.resolvedHref || firstCanonical?.rawHref || null;
+
+  return {
+    exists: canonicalTags.length > 0,
+    url: canonicalUrl,
+    multipleCanonicals: canonicalTags.length > 1,
+    isValidUrl: canonicalUrl ? isValidHttpUrl(canonicalUrl) : false,
+  };
+}
+
 function normalizeFilePath(filePath) {
   return filePath.split(path.sep).join("/");
 }
@@ -148,6 +160,24 @@ async function collectPageAudit(page, url) {
     .getAttribute("content")
     .catch(() => null);
 
+  const canonicalTags = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("link[rel]"))
+      .filter((link) => {
+        const relValue = link.getAttribute("rel") || "";
+        return relValue.toLowerCase().split(/\s+/).includes("canonical");
+      })
+      .map((link) => {
+        const rawHref = (link.getAttribute("href") || "").trim();
+
+        return {
+          rawHref,
+          resolvedHref: rawHref ? link.href : null,
+        };
+      })
+  );
+
+  const canonical = createCanonicalAudit(canonicalTags);
+
   const images = await page.locator("img").evaluateAll((elements) => {
     const imagesWithAlt = elements.filter((image) =>
       image.getAttribute("alt")?.trim()
@@ -190,6 +220,7 @@ async function collectPageAudit(page, url) {
         length: metaDescription ? metaDescription.length : 0,
       },
     },
+    canonical,
     images,
     consoleErrors,
     failedRequests,
