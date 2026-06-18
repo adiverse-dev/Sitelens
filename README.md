@@ -1,8 +1,8 @@
 # SiteLens
 
-> AI-powered website audit foundation built with Node.js, Express, and Playwright.
+> Open-source technical SEO and website auditing API built with Node.js, Express, Playwright, and Lighthouse.
 
-SiteLens is a backend-first website auditing tool that opens a real website in Chromium, captures technical signals, generates a screenshot, and returns a structured JSON audit report.
+SiteLens audits a live website in a real Chromium browser, captures technical SEO signals, runs Lighthouse scoring, generates a screenshot, and returns a structured JSON report through a simple REST API.
 
 Repository: [https://github.com/adiverse-dev/Sitelens](https://github.com/adiverse-dev/Sitelens)
 
@@ -10,62 +10,80 @@ Repository: [https://github.com/adiverse-dev/Sitelens](https://github.com/adiver
 
 ## Overview
 
-SiteLens was built as the foundation for a full website auditing platform. The current version focuses on the backend audit engine: it accepts a URL, launches a browser with Playwright, analyzes the page, and returns useful developer-facing data through a REST API.
+SiteLens is a backend-first technical SEO auditing platform. The current version, **v0.3 Technical SEO Foundation**, focuses on building a strong audit engine before adding dashboards, persistence, authentication, and report exports.
 
-The project is designed for:
+It is designed for:
 
-- Developers who want a simple website audit API
-- Recruiters reviewing backend and full-stack project quality
-- Students learning real-world Node.js and browser automation
-- Future SaaS-style dashboards for website health reports
+- Developers who want a practical website audit API
+- SEO freelancers who need structured technical audit data
+- Recruiters reviewing backend, automation, and technical SEO skills
+- Future SaaS-style dashboards for website quality monitoring
 
-SiteLens provides an early but practical audit layer for understanding whether a page loads correctly, exposes errors, contains basic SEO structure, and includes image accessibility signals.
+SiteLens combines browser automation, Lighthouse metrics, metadata extraction, social preview checks, heading analysis, image accessibility checks, and rule-based recommendations.
 
 ---
 
 ## Problem Statement
 
-Websites can look fine visually while still having technical issues in the background. Common problems include missing headings, missing meta descriptions, images without alt text, JavaScript console errors, failed network requests, and slow page loading.
+Websites can appear visually correct while still having technical SEO, accessibility, performance, or reliability issues. Common problems include missing canonicals, incomplete social metadata, poor heading structure, missing image alt text, JavaScript console errors, failed network requests, and weak Lighthouse scores.
 
-Manually checking these issues requires opening DevTools, reviewing the console, watching network requests, inspecting HTML, and taking screenshots.
+Manual inspection requires browser DevTools, SEO extensions, network monitoring, HTML review, screenshot capture, and performance tooling.
 
-SiteLens automates that first inspection layer by running a real browser audit and returning clean JSON data that can later power a dashboard, scoring system, or AI recommendations.
+SiteLens automates that first audit layer and returns clean JSON that can later power dashboards, reports, scoring systems, and AI-assisted recommendations.
 
 ---
 
 ## Current Phase
 
-### Backend Foundation Phase
+### v0.3 - Technical SEO Foundation
 
-The backend audit engine is functional and ready for testing. This version does not claim to be a complete audit platform yet. It is the foundation for a larger full-stack product.
+The backend audit engine is functional and ready for testing. It currently exposes one API endpoint, `POST /audit`, that performs a browser-based audit for a submitted URL.
 
 ### Currently Implemented
 
-- URL auditing through `POST /audit`
-- HTTP and HTTPS URL validation
+- URL validation
 - Playwright browser automation
 - Chromium page loading
-- Page title detection
+- Lighthouse category scores
+- Page title extraction
+- Full-page screenshot generation
+- Page load-time measurement
+- Console error tracking
+- Failed request tracking
 - H1 analysis
 - Meta description analysis
 - Image alt-text analysis
-- Full-page screenshot generation
-- Console error tracking
-- Failed network request tracking
-- Load-time measurement
+- Canonical tag audit
+- Open Graph audit
+- Twitter Card audit
+- Heading hierarchy audit
+- Rule-based recommendation engine
 - Structured JSON API responses
-- Browser cleanup with `finally`
 
 ### Not Implemented Yet
 
-- Frontend dashboard
+- Robots.txt audit
+- Sitemap.xml audit
+- Noindex/nofollow detection
+- Internal/external links audit
+- Structured data audit
+- Broken links audit
 - Database storage
 - Authentication
-- Lighthouse integration
-- Accessibility scoring
-- AI recommendations
-- Audit history
-- User accounts
+- React dashboard
+- PDF reports
+
+---
+
+## v0.3 Release Highlights
+
+- Added canonical tag auditing with validation for missing, invalid, and duplicate canonical tags.
+- Added Open Graph auditing for social preview metadata.
+- Added Twitter Card auditing for X/Twitter preview metadata.
+- Added heading hierarchy analysis across `h1` through `h6`.
+- Added a recommendation engine that turns raw audit findings into prioritized fixes.
+- Added Lighthouse integration for performance, accessibility, best practices, and SEO category scores.
+- Improved screenshot handling with dynamic runtime screenshot paths.
 
 ---
 
@@ -73,7 +91,7 @@ The backend audit engine is functional and ready for testing. This version does 
 
 ![SiteLens Demo](docs/assets/sitelens-demo.png)
 
-This image is generated by the Playwright screenshot workflow and stored as a documentation asset for the repository.
+This screenshot is generated by the Playwright audit workflow and stored as a documentation asset for repository presentation.
 
 ---
 
@@ -81,23 +99,46 @@ This image is generated by the Playwright screenshot workflow and stored as a do
 
 - [x] Accepts a website URL through a REST API
 - [x] Validates HTTP and HTTPS URLs
-- [x] Launches a real Chromium browser
+- [x] Launches a real Chromium browser with Playwright
+- [x] Runs Lighthouse category audits
 - [x] Captures the page title
 - [x] Measures page load time
-- [x] Counts H1 tags
-- [x] Returns H1 text content
-- [x] Checks for a meta description
-- [x] Measures meta description length
-- [x] Counts images
-- [x] Detects images missing alt text
+- [x] Captures a full-page screenshot
 - [x] Tracks browser console errors
 - [x] Tracks failed network requests
-- [x] Captures a full-page screenshot
-- [x] Returns a summarized audit result
+- [x] Analyzes H1 usage
+- [x] Checks meta description presence and length
+- [x] Counts images and detects missing alt text
+- [x] Audits canonical tags
+- [x] Audits Open Graph metadata
+- [x] Audits Twitter Card metadata
+- [x] Audits heading hierarchy
+- [x] Generates rule-based recommendations
+- [ ] Audits robots.txt
+- [ ] Audits sitemap.xml
+- [ ] Audits noindex/nofollow directives
+- [ ] Audits internal and external links
+- [ ] Audits structured data
 - [ ] Stores audit history
-- [ ] Generates website health scores
 - [ ] Provides a React dashboard
-- [ ] Generates AI-powered recommendations
+- [ ] Exports PDF reports
+
+---
+
+## Technical SEO Audits
+
+| Audit | What It Checks |
+| --- | --- |
+| H1 Analysis | H1 count, H1 text, and whether the page has a single H1 |
+| Meta Description | Presence, content, and character length |
+| Canonical Tag | Missing canonical, invalid canonical URL, and multiple canonical tags |
+| Open Graph | `og:title`, `og:description`, `og:image`, `og:url`, and `og:type` |
+| Twitter Card | `twitter:card`, `twitter:title`, `twitter:description`, and `twitter:image` |
+| Heading Hierarchy | DOM-order heading sequence, missing H1, multiple H1s, empty headings, and skipped heading levels |
+| Image Alt Text | Total images, images with alt text, images missing alt text, and sample missing-alt URLs |
+| Lighthouse | Performance, accessibility, best practices, and SEO category scores |
+| Reliability | Browser console errors and failed network requests |
+| Recommendations | Prioritized fixes generated from audit findings |
 
 ---
 
@@ -116,13 +157,16 @@ URL is validated
 Playwright launches Chromium
         |
         v
-Website page loads
+Page loads in a real browser
         |
         v
-Title, H1, meta, image, console, and network data are collected
+Technical SEO, metadata, headings, images, console, and network data are collected
         |
         v
-Full-page screenshot is generated
+Lighthouse scores are generated
+        |
+        v
+Recommendations are created
         |
         v
 Structured JSON audit result is returned
@@ -138,6 +182,7 @@ Structured JSON audit result is returned
 | Express.js | REST API server and request handling |
 | Playwright | Browser automation and page inspection |
 | Chromium | Real browser engine used during audits |
+| Lighthouse | Performance, accessibility, best practices, and SEO scoring |
 | CORS | Enables frontend clients to call the API |
 
 ---
@@ -146,14 +191,14 @@ Structured JSON audit result is returned
 
 ```text
 SiteLens/
-├── docs/
-│   └── assets/
-│       └── sitelens-demo.png
-├── server.js
-├── package.json
-├── package-lock.json
-├── .gitignore
-└── README.md
+|-- docs/
+|   `-- assets/
+|       `-- sitelens-demo.png
+|-- server.js
+|-- package.json
+|-- package-lock.json
+|-- .gitignore
+`-- README.md
 ```
 
 ---
@@ -162,7 +207,7 @@ SiteLens/
 
 ### `POST /audit`
 
-Runs a browser-based audit for a submitted website URL.
+Runs a browser-based technical SEO audit for a submitted website URL.
 
 #### Request Body
 
@@ -172,14 +217,14 @@ Runs a browser-based audit for a submitted website URL.
 }
 ```
 
-#### Success Response
+#### Sample Success Response
 
 ```json
 {
   "success": true,
   "url": "https://example.com",
   "title": "Example Domain",
-  "screenshot": "docs/assets/sitelens-demo.png",
+  "screenshot": "screenshots/example.com-2026-06-18T10-00-00-000Z.png",
   "loadTime": 1234,
   "seo": {
     "h1": {
@@ -193,6 +238,45 @@ Runs a browser-based audit for a submitted website URL.
       "length": 19
     }
   },
+  "canonical": {
+    "exists": true,
+    "url": "https://example.com/",
+    "multipleCanonicals": false,
+    "isValidUrl": true
+  },
+  "openGraph": {
+    "exists": true,
+    "title": "Example Title",
+    "description": "Example social description",
+    "image": "https://example.com/og-image.png",
+    "url": "https://example.com/",
+    "type": "website",
+    "missingFields": [],
+    "isImageUrlValid": true
+  },
+  "twitterCard": {
+    "exists": true,
+    "card": "summary_large_image",
+    "title": "Example Title",
+    "description": "Example Twitter description",
+    "image": "https://example.com/twitter-image.png",
+    "missingFields": [],
+    "isImageUrlValid": true
+  },
+  "headingHierarchy": {
+    "valid": true,
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Example Domain"
+      },
+      {
+        "level": "H2",
+        "text": "Page Overview"
+      }
+    ],
+    "issues": []
+  },
   "images": {
     "total": 3,
     "withAlt": 2,
@@ -201,10 +285,33 @@ Runs a browser-based audit for a submitted website URL.
   },
   "consoleErrors": [],
   "failedRequests": [],
+  "lighthouse": {
+    "performance": 100,
+    "accessibility": 100,
+    "bestPractices": 96,
+    "seo": 90,
+    "error": null
+  },
+  "recommendations": [
+    {
+      "severity": "medium",
+      "category": "Accessibility",
+      "issue": "Images are missing alt text",
+      "fix": "Add meaningful alt text to informative images and empty alt text to decorative images."
+    }
+  ],
   "summary": {
     "consoleErrorCount": 0,
     "failedRequestCount": 0,
-    "imageMissingAltCount": 1
+    "imageMissingAltCount": 1,
+    "recommendationCount": 1,
+    "lighthouse": {
+      "performance": 100,
+      "accessibility": 100,
+      "bestPractices": 96,
+      "seo": 90,
+      "error": null
+    }
   }
 }
 ```
@@ -296,85 +403,117 @@ Invoke-RestMethod -Uri "http://localhost:5000/audit" `
 | `title` | String | Page title detected by Chromium |
 | `screenshot` | String | Path to the generated screenshot |
 | `loadTime` | Number | Page load time in milliseconds |
-| `seo.h1.count` | Number | Number of H1 tags found on the page |
+| `seo.h1.count` | Number | Number of non-empty H1 tags found on the page |
 | `seo.h1.texts` | Array | Text content from detected H1 tags |
-| `seo.h1.hasSingleH1` | Boolean | Indicates whether the page has exactly one H1 |
+| `seo.h1.hasSingleH1` | Boolean | Indicates whether the page has exactly one non-empty H1 |
 | `seo.metaDescription.exists` | Boolean | Indicates whether a meta description exists |
 | `seo.metaDescription.content` | String or null | Meta description content |
 | `seo.metaDescription.length` | Number | Character length of the meta description |
+| `canonical.exists` | Boolean | Indicates whether a canonical tag exists |
+| `canonical.url` | String or null | Canonical URL from the first canonical tag |
+| `canonical.multipleCanonicals` | Boolean | Indicates whether multiple canonical tags were found |
+| `canonical.isValidUrl` | Boolean | Indicates whether the canonical URL is valid HTTP or HTTPS |
+| `openGraph` | Object | Open Graph metadata audit result |
+| `openGraph.missingFields` | Array | Missing Open Graph fields |
+| `openGraph.isImageUrlValid` | Boolean | Indicates whether `og:image` is a valid HTTP or HTTPS URL |
+| `twitterCard` | Object | Twitter Card metadata audit result |
+| `twitterCard.missingFields` | Array | Missing Twitter Card fields |
+| `twitterCard.isImageUrlValid` | Boolean | Indicates whether `twitter:image` is a valid HTTP or HTTPS URL |
+| `headingHierarchy.valid` | Boolean | Indicates whether heading structure passed hierarchy checks |
+| `headingHierarchy.headings` | Array | DOM-order list of detected headings |
+| `headingHierarchy.issues` | Array | Missing H1, multiple H1s, empty headings, and skipped heading levels |
 | `images.total` | Number | Total images detected on the page |
 | `images.withAlt` | Number | Images that include alt text |
 | `images.missingAlt` | Number | Images missing alt text |
 | `images.missingAltSamples` | Array | Sample image URLs missing alt text |
 | `consoleErrors` | Array | Browser console errors captured during audit |
 | `failedRequests` | Array | Failed network requests with URL, method, and failure message |
-| `summary` | Object | Small count-based summary for quick dashboard use |
+| `lighthouse.performance` | Number or null | Lighthouse performance score from 0 to 100 |
+| `lighthouse.accessibility` | Number or null | Lighthouse accessibility score from 0 to 100 |
+| `lighthouse.bestPractices` | Number or null | Lighthouse best practices score from 0 to 100 |
+| `lighthouse.seo` | Number or null | Lighthouse SEO score from 0 to 100 |
+| `lighthouse.error` | String or null | Lighthouse error message if Lighthouse fails |
+| `recommendations` | Array | Prioritized rule-based recommendations |
+| `summary` | Object | Count-based summary for dashboards |
 
 ---
 
 ## Recruiter Highlights
 
-This project demonstrates practical skills for a Full Stack Developer role:
+This project demonstrates practical full-stack and backend engineering skills:
 
 | Skill Area | Demonstrated By |
 | --- | --- |
-| Backend Development | Express API server and request handling |
-| REST APIs | `POST /audit` with structured JSON responses |
+| Backend Development | Express API server and structured request handling |
+| REST API Design | `POST /audit` with nested JSON response sections |
 | Browser Automation | Playwright-controlled Chromium audits |
-| Async JavaScript | Async navigation, browser events, and cleanup |
-| Error Tracking | Console and failed request monitoring |
-| SEO Foundations | H1 and meta description analysis |
-| Accessibility Foundations | Image alt-text inspection |
-| Performance Measurement | Basic page load-time tracking |
-| System Design | Audit pipeline ready for scoring, storage, and UI layers |
+| Lighthouse Integration | Programmatic Lighthouse scoring through a browser debugging port |
+| Async JavaScript | Async navigation, event listeners, Lighthouse execution, and browser cleanup |
+| Technical SEO | Canonical, metadata, social tags, headings, and image audits |
+| Accessibility Foundations | Image alt analysis, heading checks, and Lighthouse accessibility scoring |
+| Reliability Monitoring | Console error and failed request capture |
+| Product Thinking | Recommendation engine that turns raw signals into actionable fixes |
+| SaaS Architecture Foundation | Audit pipeline ready for storage, dashboarding, scoring, and reporting |
 
 ---
 
 ## Recommended Next Improvements
 
-- Add dynamic screenshot filenames per audit
-- Save runtime screenshots outside documentation assets
-- Add `.env.example` for configurable ports and settings
-- Add request rate limiting
-- Add stronger URL safety checks
+- Add request rate limiting and safer URL validation
+- Add robots.txt and sitemap.xml audits
+- Add noindex/nofollow detection
+- Add link crawling with concurrency limits
+- Add structured data parsing and validation
 - Add automated API tests
-- Add a license file
+- Add `.env.example` for configurable runtime settings
 - Add GitHub Actions CI
 - Add deployment instructions
-- Split code into routes, services, and utilities as the project grows
+- Split code into routes, controllers, services, and utilities as the project grows
 
 ---
 
 ## Roadmap
 
-- [x] H1 analysis
-- [x] Meta description audit
-- [x] Basic image analysis
-- [ ] Dynamic screenshot management
-- [ ] Lighthouse integration
-- [ ] Accessibility checks
-- [ ] Website scoring
-- [ ] AI recommendations
-- [ ] React dashboard
-- [ ] Audit history
-- [ ] Exportable audit reports
+### v0.4
+
+- Robots.txt Audit
+- Sitemap.xml Audit
+- Noindex/Nofollow Detection
+- Internal Links Audit
+- External Links Audit
+
+### v0.5
+
+- Structured Data Audit
+- Broken Links Audit
+- Accessibility Enhancements
+- Audit Scoring System
+
+### v1.0
+
+- React Dashboard
+- Audit History
+- Database Storage
+- Authentication
+- AI Recommendations
+- PDF Reports
 
 ---
 
 ## Future Vision
 
-The long-term goal of SiteLens is to become a complete website auditing platform.
+The long-term goal of SiteLens is to become a complete open-source technical SEO auditing platform.
 
-A user should be able to enter any website URL and receive a clear report covering technical errors, SEO basics, accessibility signals, performance metrics, screenshots, and prioritized improvement recommendations.
+A user should be able to enter any website URL and receive a clear report covering technical SEO, social metadata, accessibility, performance, reliability, screenshots, prioritized recommendations, and exportable reports.
 
-Future AI features can convert raw audit data into simple explanations and actionable next steps for developers, founders, agencies, and non-technical website owners.
+Future versions can add a React dashboard, saved audit history, team workflows, PDF reports, and AI-generated explanations for developers, founders, freelancers, agencies, and non-technical website owners.
 
 ---
 
 ## Status
 
-**Work In Progress**
+**v0.3 - Work In Progress**
 
-The backend audit engine is functional and ready for testing. It now includes URL validation, H1 analysis, meta description analysis, image alt-text analysis, console error tracking, failed request tracking, load-time measurement, and screenshot capture.
+The backend audit engine is functional and ready for testing. It now includes Playwright automation, Lighthouse scores, technical SEO metadata audits, heading hierarchy analysis, image alt checks, console and network tracking, screenshots, and rule-based recommendations.
 
-Frontend dashboard, database storage, Lighthouse integration, advanced accessibility checks, and AI-powered recommendations are planned for future releases.
+The next milestone is **v0.4**, focused on crawlability and indexability audits.

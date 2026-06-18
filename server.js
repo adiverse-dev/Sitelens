@@ -31,9 +31,21 @@ function isValidHttpUrl(value) {
   }
 }
 
+function getMissingFields(source, requiredFields) {
+  return requiredFields.filter((field) => !source[field]);
+}
+
+function hasAnyField(source, fields) {
+  return fields.some((field) => Boolean(source[field]));
+}
+
+function isValidOptionalUrl(value) {
+  return value ? isValidHttpUrl(value) : false;
+}
+
 function createCanonicalAudit(canonicalTags) {
   const firstCanonical = canonicalTags[0] || null;
-  const canonicalUrl = firstCanonical?.resolvedHref || firstCanonical?.rawHref || null;
+  const canonicalUrl = firstCanonical?.rawHref || null;
 
   return {
     exists: canonicalTags.length > 0,
@@ -45,20 +57,281 @@ function createCanonicalAudit(canonicalTags) {
 
 function createOpenGraphAudit(openGraphTags) {
   const requiredFields = ["title", "description", "image", "url", "type"];
-  const missingFields = requiredFields.filter((field) => !openGraphTags[field]);
 
   return {
-    exists: requiredFields.some((field) => Boolean(openGraphTags[field])),
+    exists: hasAnyField(openGraphTags, requiredFields),
     title: openGraphTags.title || null,
     description: openGraphTags.description || null,
     image: openGraphTags.image || null,
     url: openGraphTags.url || null,
     type: openGraphTags.type || null,
-    missingFields,
-    isImageUrlValid: openGraphTags.image
-      ? isValidHttpUrl(openGraphTags.image)
-      : false,
+    missingFields: getMissingFields(openGraphTags, requiredFields),
+    isImageUrlValid: isValidOptionalUrl(openGraphTags.image),
   };
+}
+
+function createTwitterCardAudit(twitterTags) {
+  const requiredFields = ["card", "title", "description", "image"];
+
+  return {
+    exists: hasAnyField(twitterTags, requiredFields),
+    card: twitterTags.card || null,
+    title: twitterTags.title || null,
+    description: twitterTags.description || null,
+    image: twitterTags.image || null,
+    missingFields: getMissingFields(twitterTags, requiredFields),
+    isImageUrlValid: isValidOptionalUrl(twitterTags.image),
+  };
+}
+
+function createHeadingHierarchyAudit(headings) {
+  const issues = [];
+  const h1Count = headings.filter((heading) => heading.level === "H1").length;
+  const emptyHeadings = headings.filter((heading) => !heading.text);
+
+  if (h1Count === 0) {
+    issues.push("Missing H1 heading");
+  }
+
+  if (h1Count > 1) {
+    issues.push("Multiple H1 headings found");
+  }
+
+  if (emptyHeadings.length > 0) {
+    issues.push(`${emptyHeadings.length} empty heading(s) found`);
+  }
+
+  let previousLevel = null;
+
+  headings
+    .filter((heading) => heading.text)
+    .forEach((heading) => {
+      const currentLevel = Number(heading.level.replace("H", ""));
+
+      if (previousLevel && currentLevel > previousLevel + 1) {
+        issues.push(`Skipped heading level: H${previousLevel} to H${currentLevel}`);
+      }
+
+      previousLevel = currentLevel;
+    });
+
+  return {
+    valid: issues.length === 0,
+    headings,
+    issues,
+  };
+}
+
+function addRecommendation(recommendations, severity, category, issue, fix) {
+  recommendations.push({
+    severity,
+    category,
+    issue,
+    fix,
+  });
+}
+
+function generateRecommendations(pageAudit, lighthouse) {
+  const recommendations = [];
+  const { seo, images, canonical, openGraph, twitterCard, headingHierarchy } =
+    pageAudit;
+
+  if (seo.h1.count === 0) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "SEO",
+      "Missing H1 heading",
+      "Add one clear H1 that describes the primary topic of the page."
+    );
+  }
+
+  if (seo.h1.count > 1) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "SEO",
+      "Multiple H1 headings found",
+      "Use a single H1 for the main page topic and structure subsections with H2-H6 headings."
+    );
+  }
+
+  if (!seo.metaDescription.exists) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "SEO",
+      "Missing meta description",
+      "Add a concise meta description that summarizes the page content."
+    );
+  } else if (
+    seo.metaDescription.length < 50 ||
+    seo.metaDescription.length > 160
+  ) {
+    addRecommendation(
+      recommendations,
+      "low",
+      "SEO",
+      "Meta description length is outside the recommended range",
+      "Keep the meta description roughly between 50 and 160 characters."
+    );
+  }
+
+  if (!canonical.exists) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "SEO",
+      "Missing canonical tag",
+      "Add a canonical tag that points to the preferred URL for this page."
+    );
+  } else {
+    if (!canonical.isValidUrl) {
+      addRecommendation(
+        recommendations,
+        "high",
+        "SEO",
+        "Canonical URL is invalid",
+        "Use a valid HTTP or HTTPS canonical URL."
+      );
+    }
+
+    if (canonical.multipleCanonicals) {
+      addRecommendation(
+        recommendations,
+        "high",
+        "SEO",
+        "Multiple canonical tags detected",
+        "Use exactly one canonical tag per page."
+      );
+    }
+  }
+
+  if (openGraph.missingFields.includes("image")) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Social SEO",
+      "Missing Open Graph image",
+      "Add an og:image tag so shared links have a strong preview image."
+    );
+  }
+
+  if (openGraph.image && !openGraph.isImageUrlValid) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Social SEO",
+      "Open Graph image URL is invalid",
+      "Use a valid absolute HTTP or HTTPS URL for og:image."
+    );
+  }
+
+  if (openGraph.missingFields.length > 0) {
+    addRecommendation(
+      recommendations,
+      "low",
+      "Social SEO",
+      "Open Graph metadata is incomplete",
+      `Add missing Open Graph fields: ${openGraph.missingFields.join(", ")}.`
+    );
+  }
+
+  if (twitterCard.missingFields.includes("image")) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Social SEO",
+      "Missing Twitter Card image",
+      "Add twitter:image so posts have a visual preview."
+    );
+  }
+
+  if (twitterCard.image && !twitterCard.isImageUrlValid) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Social SEO",
+      "Twitter Card image URL is invalid",
+      "Use a valid absolute HTTP or HTTPS URL for twitter:image."
+    );
+  }
+
+  if (twitterCard.missingFields.length > 0) {
+    addRecommendation(
+      recommendations,
+      "low",
+      "Social SEO",
+      "Twitter Card metadata is incomplete",
+      `Add missing Twitter Card fields: ${twitterCard.missingFields.join(", ")}.`
+    );
+  }
+
+  if (images.missingAlt > 0) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Accessibility",
+      "Images are missing alt text",
+      "Add meaningful alt text to informative images and empty alt text to decorative images."
+    );
+  }
+
+  headingHierarchy.issues.forEach((issue) => {
+    if (issue.includes("Multiple H1") || issue.includes("Missing H1")) {
+      return;
+    }
+
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Content Structure",
+      issue,
+      "Use a logical heading outline without empty headings or skipped levels."
+    );
+  });
+
+  if (lighthouse.performance !== null && lighthouse.performance < 50) {
+    addRecommendation(
+      recommendations,
+      "high",
+      "Performance",
+      "Lighthouse performance score is below 50",
+      "Optimize render-blocking resources, JavaScript execution, images, and server response time."
+    );
+  }
+
+  if (lighthouse.accessibility !== null && lighthouse.accessibility < 80) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Accessibility",
+      "Lighthouse accessibility score is below 80",
+      "Review Lighthouse accessibility findings and fix labels, contrast, semantics, and keyboard issues."
+    );
+  }
+
+  if (pageAudit.consoleErrors.length > 0) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Reliability",
+      "Console errors were detected",
+      "Fix JavaScript errors shown in the browser console."
+    );
+  }
+
+  if (pageAudit.failedRequests.length > 0) {
+    addRecommendation(
+      recommendations,
+      "medium",
+      "Reliability",
+      "Failed network requests were detected",
+      "Fix broken assets, API calls, or third-party requests returning failures."
+    );
+  }
+
+  return recommendations;
 }
 
 function normalizeFilePath(filePath) {
@@ -166,11 +439,18 @@ async function collectPageAudit(page, url) {
   const loadTime = Date.now() - startTime;
   const title = await page.title();
 
-  const h1Texts = await page.locator("h1").evaluateAll((elements) =>
-    elements
-      .map((element) => element.textContent.trim())
-      .filter(Boolean)
+  const headings = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6")).map(
+      (element) => ({
+        level: element.tagName.toUpperCase(),
+        text: element.textContent.trim(),
+      }))
   );
+
+  const h1Texts = headings
+    .filter((heading) => heading.level === "H1" && heading.text)
+    .map((heading) => heading.text);
+  const headingHierarchy = createHeadingHierarchyAudit(headings);
 
   const metaDescription = await page
     .locator('meta[name="description"]')
@@ -213,6 +493,23 @@ async function collectPageAudit(page, url) {
   });
 
   const openGraph = createOpenGraphAudit(openGraphTags);
+
+  const twitterTags = await page.evaluate(() => {
+    const getMetaContent = (name) => {
+      const element = document.querySelector(`meta[name="${name}"]`);
+      const content = element?.getAttribute("content")?.trim();
+      return content || null;
+    };
+
+    return {
+      card: getMetaContent("twitter:card"),
+      title: getMetaContent("twitter:title"),
+      description: getMetaContent("twitter:description"),
+      image: getMetaContent("twitter:image"),
+    };
+  });
+
+  const twitterCard = createTwitterCardAudit(twitterTags);
 
   const images = await page.locator("img").evaluateAll((elements) => {
     const imagesWithAlt = elements.filter((image) =>
@@ -258,6 +555,8 @@ async function collectPageAudit(page, url) {
     },
     canonical,
     openGraph,
+    twitterCard,
+    headingHierarchy,
     images,
     consoleErrors,
     failedRequests,
@@ -299,16 +598,19 @@ app.post("/audit", async (req, res) => {
     const lighthouse = await runLighthouseAudit(url, remoteDebuggingPort).catch(
       createFailedLighthouseResult
     );
+    const recommendations = generateRecommendations(pageAudit, lighthouse);
 
     res.json({
       success: true,
       url,
       ...pageAudit,
       lighthouse,
+      recommendations,
       summary: {
         consoleErrorCount: pageAudit.consoleErrors.length,
         failedRequestCount: pageAudit.failedRequests.length,
         imageMissingAltCount: pageAudit.images.missingAlt,
+        recommendationCount: recommendations.length,
         lighthouse,
       },
     });
