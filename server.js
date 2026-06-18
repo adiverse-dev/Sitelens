@@ -1,8 +1,12 @@
 const express = require("express");
 const { chromium } = require("playwright");
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
+const PORT = 5000;
+const screenshotPath = path.join("docs", "assets", "sitelens-demo.png");
 
 app.use(cors());
 app.use(express.json());
@@ -42,8 +46,10 @@ app.post("/audit", async (req, res) => {
 
     const title = await page.title();
 
+    fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+
     await page.screenshot({
-      path: "google.png",
+      path: screenshotPath,
       fullPage: true,
     });
 
@@ -52,7 +58,7 @@ app.post("/audit", async (req, res) => {
     res.json({
       success: true,
       title,
-      screenshot: "google.png",
+      screenshot: screenshotPath,
       loadTime,
       consoleErrors,
       failedRequests,
@@ -66,6 +72,6 @@ app.post("/audit", async (req, res) => {
   }
 });
 
-app.listen(5000, () => {
-  console.log("Server running on port 5000");
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

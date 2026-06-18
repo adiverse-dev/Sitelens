@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
 
-# Generated audit screenshots
-backend/*.png
+# Runtime audit output
+screenshots/
+audit-results/
 
 # Environment files
 .env
@@ -12,6 +13,11 @@ backend/*.png
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+
+# Playwright output
+playwright-report/
+test-results/
 
 # OS files
 .DS_Store
