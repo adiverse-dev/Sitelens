@@ -1,0 +1,45 @@
+{
+  "client": "Thunder Client",
+  "collectionName": "SiteLens API",
+  "dateExported": "2026-06-18T00:00:00.000Z",
+  "version": "1.2",
+  "folders": [],
+  "requests": [
+    {
+      "_id": "sitelens-audit-example",
+      "colId": "sitelens-api",
+      "containerId": "",
+      "name": "Audit real website",
+      "url": "http://localhost:5000/audit",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-06-18T00:00:00.000Z",
+      "modified": "2026-06-18T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"url\": \"https://example.com\"\n}"
+      },
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.success",
+          "action": "equal",
+          "value": "true"
+        }
+      ]
+    }
+  ]
+}

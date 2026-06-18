@@ -43,6 +43,24 @@ function createCanonicalAudit(canonicalTags) {
   };
 }
 
+function createOpenGraphAudit(openGraphTags) {
+  const requiredFields = ["title", "description", "image", "url", "type"];
+  const missingFields = requiredFields.filter((field) => !openGraphTags[field]);
+
+  return {
+    exists: requiredFields.some((field) => Boolean(openGraphTags[field])),
+    title: openGraphTags.title || null,
+    description: openGraphTags.description || null,
+    image: openGraphTags.image || null,
+    url: openGraphTags.url || null,
+    type: openGraphTags.type || null,
+    missingFields,
+    isImageUrlValid: openGraphTags.image
+      ? isValidHttpUrl(openGraphTags.image)
+      : false,
+  };
+}
+
 function normalizeFilePath(filePath) {
   return filePath.split(path.sep).join("/");
 }
@@ -178,6 +196,24 @@ async function collectPageAudit(page, url) {
 
   const canonical = createCanonicalAudit(canonicalTags);
 
+  const openGraphTags = await page.evaluate(() => {
+    const getMetaContent = (property) => {
+      const element = document.querySelector(`meta[property="${property}"]`);
+      const content = element?.getAttribute("content")?.trim();
+      return content || null;
+    };
+
+    return {
+      title: getMetaContent("og:title"),
+      description: getMetaContent("og:description"),
+      image: getMetaContent("og:image"),
+      url: getMetaContent("og:url"),
+      type: getMetaContent("og:type"),
+    };
+  });
+
+  const openGraph = createOpenGraphAudit(openGraphTags);
+
   const images = await page.locator("img").evaluateAll((elements) => {
     const imagesWithAlt = elements.filter((image) =>
       image.getAttribute("alt")?.trim()
@@ -221,6 +257,7 @@ async function collectPageAudit(page, url) {
       },
     },
     canonical,
+    openGraph,
     images,
     consoleErrors,
     failedRequests,
