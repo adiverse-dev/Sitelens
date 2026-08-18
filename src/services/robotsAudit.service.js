@@ -28,13 +28,14 @@ function createEmptyRobotsAudit(url, overrides = {}) {
   };
 }
 
+const { safeFetch } = require("../utils/safeFetch");
+
 async function fetchTextWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(url, {
-      redirect: "follow",
+    return await safeFetch(url, {
       signal: controller.signal,
       headers: {
         "user-agent": SITELENS_USER_AGENT,

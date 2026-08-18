@@ -24,13 +24,14 @@ function createEmptySitemapAudit(url, overrides = {}) {
   };
 }
 
+const { safeFetch } = require("../utils/safeFetch");
+
 async function fetchTextWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, {
-      redirect: "follow",
+    const response = await safeFetch(url, {
       signal: controller.signal,
       headers: {
         "user-agent": SITELENS_USER_AGENT,

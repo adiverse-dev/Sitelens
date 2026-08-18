@@ -11,7 +11,7 @@ const { auditSitemap } = require("../services/sitemapAudit.service");
 const {
   generateRecommendations,
 } = require("../services/recommendationAudit.service");
-const { isValidHttpUrl } = require("../utils/urlValidator");
+const { isValidHttpUrl, validateTargetUrl } = require("../utils/urlValidator");
 
 async function auditWebsite(req, res) {
   const { url } = req.body;
@@ -27,6 +27,14 @@ async function auditWebsite(req, res) {
     return res.status(400).json({
       success: false,
       error: "Please provide a valid HTTP or HTTPS URL",
+    });
+  }
+
+  const securityCheck = await validateTargetUrl(url);
+  if (!securityCheck.safe) {
+    return res.status(400).json({
+      success: false,
+      error: "Target URL is not allowed",
     });
   }
 

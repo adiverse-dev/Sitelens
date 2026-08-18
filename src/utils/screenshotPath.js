@@ -1,8 +1,17 @@
 const path = require("path");
 const { SCREENSHOT_DIR } = require("./constants");
 
+/**
+ * Converts a full screenshot filesystem path into a URL-rooted path
+ * that can be served by Express static middleware.
+ *
+ * Example:
+ *   "screenshots/www.example.com-2026-08-18T04-35-03-502Z.png"
+ *   → "/screenshots/www.example.com-2026-08-18T04-35-03-502Z.png"
+ */
 function normalizeFilePath(filePath) {
-  return filePath.split(path.sep).join("/");
+  const filename = path.basename(filePath);
+  return `/screenshots/${filename}`;
 }
 
 function createScreenshotPath(url) {
@@ -16,3 +25,4 @@ module.exports = {
   normalizeFilePath,
   createScreenshotPath,
 };
+
