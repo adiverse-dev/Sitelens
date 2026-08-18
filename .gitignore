@@ -2,8 +2,8 @@
 node_modules/
 
 # Runtime audit output
-screenshots/
-audit-results/
+backend/screenshots/
+backend/audit-results/
 
 # Environment files
 .env
