@@ -1,0 +1,191 @@
+{
+  "success": true,
+  "url": "https://www.wikipedia.org",
+  "title": "Wikipedia",
+  "screenshot": "/screenshots/www.wikipedia.org-2026-08-18T06-33-22-219Z.png",
+  "loadTime": 853,
+  "seo": {
+    "h1": {
+      "count": 1,
+      "texts": [
+        "Wikipedia\n\nThe Free Encyclopedia"
+      ],
+      "hasSingleH1": true
+    },
+    "metaDescription": {
+      "exists": true,
+      "content": "Wikipedia is a free online encyclopedia, created and edited by volunteers around the world and hosted by the Wikimedia Foundation.",
+      "length": 130
+    }
+  },
+  "canonical": {
+    "exists": false,
+    "url": null,
+    "multipleCanonicals": false,
+    "isValidUrl": false
+  },
+  "openGraph": {
+    "exists": true,
+    "title": "Wikipedia, the free encyclopedia",
+    "description": "Wikipedia is a free online encyclopedia, created and edited by volunteers around the world and hosted by the Wikimedia Foundation.",
+    "image": "https://upload.wikimedia.org/wikipedia/en/thumb/8/80/Wikipedia-logo-v2.svg/250px-Wikipedia-logo-v2.svg.png",
+    "url": null,
+    "type": "website",
+    "missingFields": [
+      "url"
+    ],
+    "isImageUrlValid": true
+  },
+  "twitterCard": {
+    "exists": false,
+    "card": null,
+    "title": null,
+    "description": null,
+    "image": null,
+    "missingFields": [
+      "card",
+      "title",
+      "description",
+      "image"
+    ],
+    "isImageUrlValid": false
+  },
+  "indexability": {
+    "indexable": true,
+    "followable": true,
+    "robotsMeta": null,
+    "googlebotMeta": null,
+    "issues": []
+  },
+  "headingHierarchy": {
+    "valid": true,
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Wikipedia\n\nThe Free Encyclopedia"
+      },
+      {
+        "level": "H2",
+        "text": "1,000,000+\n\n\narticles"
+      },
+      {
+        "level": "H2",
+        "text": "100,000+\n\n\narticles"
+      },
+      {
+        "level": "H2",
+        "text": "10,000+\n\n\narticles"
+      },
+      {
+        "level": "H2",
+        "text": "1,000+\n\n\narticles"
+      },
+      {
+        "level": "H2",
+        "text": "100+\n\n\narticles"
+      },
+      {
+        "level": "H3",
+        "text": "We owe you an explanation."
+      }
+    ],
+    "issues": []
+  },
+  "images": {
+    "total": 1,
+    "withAlt": 0,
+    "missingAlt": 1,
+    "missingAltSamples": [
+      "https://www.wikipedia.org/portal/wikipedia.org/assets/img/Wikipedia-logo-v2.png"
+    ]
+  },
+  "consoleErrors": [],
+  "failedRequests": [],
+  "blockedRequests": [],
+  "robots": {
+    "exists": true,
+    "url": "https://www.wikipedia.org/robots.txt",
+    "statusCode": 200,
+    "allowsHomepage": true,
+    "blocksAll": false,
+    "sitemapUrls": [
+      "https://en.wikipedia.org/w/rest.php/site/v1/sitemap/0"
+    ],
+    "ruleCount": 45,
+    "issues": [],
+    "error": null
+  },
+  "sitemap": {
+    "exists": true,
+    "url": "https://en.wikipedia.org/w/rest.php/site/v1/sitemap/0",
+    "statusCode": 403,
+    "validXml": false,
+    "urlCount": 0,
+    "hasLastmod": false,
+    "issues": [
+      "Sitemap returns non-200 status code: 403"
+    ],
+    "error": null
+  },
+  "lighthouse": {
+    "performance": 95,
+    "accessibility": 93,
+    "bestPractices": 100,
+    "seo": 100,
+    "error": null
+  },
+  "recommendations": [
+    {
+      "severity": "high",
+      "category": "SEO",
+      "issue": "Missing canonical tag",
+      "fix": "Add a canonical tag that points to the preferred URL for this page."
+    },
+    {
+      "severity": "medium",
+      "category": "Indexability",
+      "issue": "Sitemap returns a non-200 status code",
+      "fix": "Make sure sitemap.xml is reachable and returns HTTP 200."
+    },
+    {
+      "severity": "low",
+      "category": "Social SEO",
+      "issue": "Open Graph metadata is incomplete",
+      "fix": "Add missing Open Graph fields: url."
+    },
+    {
+      "severity": "medium",
+      "category": "Social SEO",
+      "issue": "Missing Twitter Card image",
+      "fix": "Add twitter:image so posts have a visual preview."
+    },
+    {
+      "severity": "low",
+      "category": "Social SEO",
+      "issue": "Twitter Card metadata is incomplete",
+      "fix": "Add missing Twitter Card fields: card, title, description, image."
+    },
+    {
+      "severity": "medium",
+      "category": "Accessibility",
+      "issue": "Images are missing alt text",
+      "fix": "Add meaningful alt text to informative images and empty alt text to decorative images."
+    }
+  ],
+  "summary": {
+    "consoleErrorCount": 0,
+    "failedRequestCount": 0,
+    "imageMissingAltCount": 1,
+    "robotsIssues": 0,
+    "sitemapIssues": 1,
+    "indexabilityIssues": 0,
+    "recommendationCount": 6,
+    "lighthouse": {
+      "performance": 95,
+      "accessibility": 93,
+      "bestPractices": 100,
+      "seo": 100,
+      "error": null
+    }
+  }
+}
