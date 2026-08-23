@@ -20,7 +20,7 @@ async function collectSeoAudit(page, headings) {
   const metaDescription = await page
     .locator('meta[name="description"]')
     .first()
-    .getAttribute("content")
+    .getAttribute("content", { timeout: 100 })
     .catch(() => null);
 
   const canonicalTags = await page.evaluate(() =>
