@@ -110,18 +110,18 @@ async function runTests() {
     } else if (pathname === "/slow-chain-1") {
       setTimeout(() => {
         if (!res.destroyed) redirect(res, 302, "/slow-chain-2");
-      }, 30);
+      }, 40);
     } else if (pathname === "/slow-chain-2") {
       setTimeout(() => {
         if (!res.destroyed) redirect(res, 302, "/slow-chain-final");
-      }, 30);
+      }, 40);
     } else if (pathname === "/slow-chain-final") {
       setTimeout(() => {
         if (!res.destroyed) {
           res.writeHead(200);
           res.end();
         }
-      }, 30);
+      }, 40);
     } else {
       res.writeHead(404);
       res.end();
@@ -306,16 +306,22 @@ async function runTests() {
       { method: "HEAD", range: null },
     ]);
 
+    const finalChainRequestsBefore = (methods.get("/slow-chain-final") || []).length;
     const sharedTimeout = await checkLinkTarget(`${firstOrigin}/slow-chain-1`, {
       ...options,
-      timeoutMs: 75,
+      timeoutMs: 70,
     });
     assert.strictEqual(sharedTimeout.finalState, "timeout");
     assert.strictEqual(sharedTimeout.health, "unreachable");
     assert.strictEqual(sharedTimeout.isBroken, null);
-    assert.ok(sharedTimeout.redirectCount >= 1);
-    assert.ok(sharedTimeout.responseTimeMs < 120);
+    assert.ok(sharedTimeout.redirectCount <= 1);
+    assert.strictEqual(
+      (methods.get("/slow-chain-final") || []).length,
+      finalChainRequestsBefore,
+      "the overall deadline must expire before a third hop is requested"
+    );
 
+    const directRequestsBeforeValidationTimeout = methods.get("/direct").length;
     const validationTimeout = await checkLinkTarget(`${firstOrigin}/direct`, {
       ...options,
       timeoutMs: 20,
@@ -330,7 +336,11 @@ async function runTests() {
     });
     assert.strictEqual(validationTimeout.finalState, "timeout");
     assert.strictEqual(validationTimeout.health, "unreachable");
-    assert.ok(validationTimeout.responseTimeMs < 50);
+    assert.strictEqual(
+      methods.get("/direct").length,
+      directRequestsBeforeValidationTimeout,
+      "an expired validation deadline must prevent the HTTP request"
+    );
 
     console.log("Redirect-chain integration tests passed");
   } finally {

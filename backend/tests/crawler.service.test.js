@@ -121,6 +121,25 @@ async function runTest(label, testFn) {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
+    await runTest("Test 0 — stable failed-crawl contract", async () => {
+      const result = await runCrawl(
+        "not a valid URL",
+        { maxPages: 1, maxDepth: 0, concurrency: 1, runLighthouse: false },
+        createTestDependencies()
+      );
+      assert.strictEqual(result.crawl.status, "failed");
+      assert.strictEqual(result.siteWide, null);
+      assert.deepStrictEqual(result.pages, []);
+      assert.strictEqual(result.linkChecks.uniqueTargets, 0);
+      assert.deepStrictEqual(result.linkHealth.actionSummary, {
+        totalActionableTargets: 0,
+        byCode: {},
+        byOwner: { developer: 0, seo: 0, content: 0, site_owner: 0, review: 0 },
+        bySeverity: { high: 0, medium: 0, low: 0, info: 0 },
+      });
+      assert.deepStrictEqual(result.linkHealth.actions, []);
+    });
+
     await runTest("Test A — 1-page local crawl", async (label) => {
       const start = Date.now();
       const result = await runCrawl(baseUrl + "/about", { maxPages: 1, maxDepth: 0, concurrency: 1, runLighthouse: false }, createTestDependencies());
@@ -194,6 +213,9 @@ async function runTest(label, testFn) {
       assert.strictEqual(result.linkHealth.summary.byHealth.healthy, checkedTargets.length);
       assert.strictEqual(result.linkHealth.summary.affectedPages, 0);
       assert.deepStrictEqual(result.linkHealth.issues.broken, []);
+      assert.ok(result.linkHealth.targets.every((target) => target.remediation === null));
+      assert.strictEqual(result.linkHealth.actionSummary.totalActionableTargets, 0);
+      assert.deepStrictEqual(result.linkHealth.actions, []);
 
       const crawledAboutPages = result.pages.filter(
         (page) => page.url === `${baseUrl}/about`

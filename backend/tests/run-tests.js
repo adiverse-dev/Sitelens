@@ -13,6 +13,7 @@ const SUITES = Object.freeze({
     "urlNormalizer.test.js",
     "linkCheckMapping.test.js",
     "linkHealthAggregation.test.js",
+    "linkRemediation.test.js",
     "siteAggregation.test.js",
   ]),
   integration: Object.freeze([

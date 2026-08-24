@@ -104,7 +104,7 @@ const { applyLinkChecks } = require("./linkChecker.service");
 
 /**
  * @typedef {Object} CrawlSummary
- * @property {string}  status          - "planned" | "running" | "complete" | "failed"
+ * @property {string}  status          - "planned" | "completed" | "failed"
  * @property {number}  pagesDiscovered - Total unique same-domain URLs found.
  * @property {number}  pagesCrawled    - Pages successfully audited.
  * @property {number}  pagesFailed     - Pages that threw an error during audit.
@@ -121,7 +121,7 @@ const { applyLinkChecks } = require("./linkChecker.service");
  * @property {CrawlSummary} crawl      - High-level crawl statistics.
  * @property {Object|null}  siteWide   - Site-level aggregation (Phase 5.7).
  * @property {Object}       linkChecks - Phase 6B unique-target check summary.
- * @property {Object}       linkHealth - Phase 6D site-wide link findings.
+ * @property {Object}       linkHealth - Phase 6D/6E link findings and actions.
  * @property {Object[]}     pages      - Per-page audit results (Phase 5.6).
  */
 
@@ -511,7 +511,7 @@ function _resolveOptions(options = {}) {
 }
 
 /**
- * Builds the Phase 5.1 stub CrawlResult.
+ * Builds a stable empty CrawlResult for a crawl that cannot start.
  *
  * @param {string}       seedUrl
  * @param {CrawlOptions} options

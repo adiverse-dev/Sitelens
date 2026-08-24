@@ -207,6 +207,7 @@ async function runPostCrawlContractCheck() {
       classificationConflict: false,
       health: "redirected",
       isBroken: false,
+      errorCode: null,
       statusCode: 301,
       finalUrl: "https://public.example/new-about",
       finalStatusCode: 200,
@@ -225,6 +226,15 @@ async function runPostCrawlContractCheck() {
       anchors: ["About"],
       severity: "medium",
       priority: 2,
+      remediation: {
+        code: "update_internal_redirect",
+        title: "Update internal redirect",
+        summary: "This internal target redirects to another destination.",
+        recommendedAction: "Update affected source pages to link directly to the verified final internal destination.",
+        verification: "Re-run the crawl and confirm the source pages no longer depend on this redirect.",
+        owner: "developer",
+        automatable: false,
+      },
     }],
     issues: {
       broken: [],
@@ -236,6 +246,20 @@ async function runPostCrawlContractCheck() {
       unknown: [],
       conflicts: [],
     },
+    actionSummary: {
+      totalActionableTargets: 1,
+      byCode: { update_internal_redirect: 1 },
+      byOwner: { developer: 1, seo: 0, content: 0, site_owner: 0, review: 0 },
+      bySeverity: { high: 0, medium: 1, low: 0, info: 0 },
+    },
+    actions: [{
+      code: "update_internal_redirect",
+      severity: "medium",
+      priority: 2,
+      targetCount: 1,
+      affectedPageCount: 1,
+      targets: ["https://public.example/about"],
+    }],
   };
 
   urlValidator.validateTargetUrl = async (targetUrl) => ({
