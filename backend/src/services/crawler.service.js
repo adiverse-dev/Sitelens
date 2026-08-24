@@ -119,25 +119,10 @@ const { Semaphore } = require("../utils/semaphore");
 
 /**
  * @typedef {Object} DiscoveredLinks
- *
- * The categorized result of link discovery on a single page.
- *
- * IMPORTANT — Phase 5.2 semantics:
- *   - No normalization is applied (trailing slashes, query params, fragments
- *     are preserved as-is). Normalization is Phase 5.3.
- *   - No deduplication is performed. The same URL may appear more than once
- *     if the page links to it multiple times. Deduplication is Phase 5.5.
- *   - Same-domain classification is based solely on hostname comparison
- *     against the seed's hostname. The final crawl policy (subdomain rules,
- *     www-equivalence) is Phase 5.4.
- *
- * @property {string[]} sameDomain - Resolved absolute URLs whose hostname
- *                                   exactly matches the seed hostname.
- * @property {string[]} external   - Valid HTTP/HTTPS URLs pointing to a
- *                                   different hostname. Recorded but NOT crawled.
- * @property {string[]} discarded  - Raw href values that cannot be crawled:
- *                                   mailto:, tel:, javascript:, data:, blob:,
- *                                   empty, fragment-only, or malformed.
+ * @property {Object[]} internal  - Crawl-policy-approved HTTP/HTTPS records.
+ * @property {Object[]} external  - Usable HTTP/HTTPS records outside policy.
+ * @property {Object[]} discarded - Unusable records with deterministic reasons.
+ * @property {{ internal: number, external: number, discarded: number }} summary
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -274,62 +259,67 @@ async function runCrawl(seedUrl, options) {
  *
  * Phase 5.2 — URL Discovery.
  *
- * This function:
- *   1. Uses page.evaluate() to extract raw href strings from every <a> element.
- *   2. Resolves relative hrefs to absolute URLs using the page's baseUrl.
- *   3. Classifies each resolved URL into one of three buckets:
- *        sameDomain — same hostname as baseUrl (candidate for crawling).
- *        external   — valid HTTP/HTTPS but different hostname (recorded, not crawled).
- *        discarded  — uncrawlable (mailto:, tel:, javascript:, empty, fragment-only…).
+ * This function extracts link evidence, resolves and normalizes usable targets,
+ * and classifies them with the same crawl policy used for queue admission.
  *
  * Security note:
  *   This function performs ONLY string inspection — no fetch(), no page.goto(),
  *   no network activity.  SSRF validation of discovered URLs happens later
  *   (Phase 5.4/5.5) before any URL is actually audited.
  *
- * Normalization note:
- *   Raw resolved URLs are returned as-is (fragments, trailing slashes, and
- *   query parameters are preserved).  URL normalization is Phase 5.3.
- *
  * Deduplication note:
- *   If the page links to the same URL multiple times, it will appear multiple
- *   times in the returned arrays.  Deduplication is Phase 5.5.
+ *   Link records preserve every DOM occurrence. Queue candidates are deduplicated
+ *   separately by normalized URL.
  *
  * @param {import('playwright').Page} page    - A Playwright Page that has already
  *                                              navigated to the target URL.
- * @param {string}                    baseUrl - The absolute URL of the current page.
- *                                              Used to resolve relative hrefs and to
- *                                              determine the "same domain" hostname.
+ * @param {string}                    sourceUrl - Absolute URL of the current page.
+ * @param {string}                    seedUrl   - Normalized crawl seed URL.
+ * @param {CrawlOptions}              options   - Crawl policy options.
  * @returns {Promise<DiscoveredLinks>}
  */
-async function discoverLinks(page, baseUrl) {
+async function discoverLinks(page, sourceUrl, seedUrl = sourceUrl, options = {}) {
   // Extract raw href strings from the DOM — pure string data, no network calls.
-  const rawHrefs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("a[href]"))
-      .map((anchor) => anchor.getAttribute("href") ?? "")
+  const extractedLinks = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("a[href]")).map((anchor) => ({
+      rawHref: anchor.getAttribute("href") ?? "",
+      anchorText: anchor.textContent ?? "",
+      rel: anchor.getAttribute("rel") ?? "",
+    }))
   );
 
-  let seedHostname;
+  let sourceIsValid = true;
   try {
-    seedHostname = new URL(baseUrl).hostname;
+    new URL(sourceUrl);
   } catch (_) {
-    // baseUrl is malformed — return everything as discarded.
-    return { sameDomain: [], external: [], discarded: rawHrefs };
+    // Preserve evidence but mark every record unusable if the source is invalid.
+    sourceIsValid = false;
   }
 
-  const sameDomain = [];
-  const external   = [];
-  const discarded  = [];
+  const internal = [];
+  const external = [];
+  const discarded = [];
 
-  for (const rawHref of rawHrefs) {
-    const { bucket, resolved } = _classifyHref(rawHref, baseUrl, seedHostname);
+  for (const extractedLink of extractedLinks) {
+    const record = sourceIsValid
+      ? _createLinkRecord(extractedLink, sourceUrl, seedUrl, options)
+      : _createDiscardedLinkRecord(extractedLink, sourceUrl, "invalid-source-url");
 
-    if (bucket === "sameDomain") sameDomain.push(resolved);
-    else if (bucket === "external")   external.push(resolved);
-    else                              discarded.push(rawHref); // keep raw for diagnostics
+    if (record.classification === "internal") internal.push(record);
+    else if (record.classification === "external") external.push(record);
+    else discarded.push(record);
   }
 
-  return { sameDomain, external, discarded };
+  return {
+    internal,
+    external,
+    discarded,
+    summary: {
+      internal: internal.length,
+      external: external.length,
+      discarded: discarded.length,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -353,17 +343,24 @@ async function _processUrl(entry, state, options, seedUrl) {
     }
 
     // Discover links
-    const links = await discoverLinks(browserSession.page, entry.url);
+    const sourceUrl = browserSession.page.url() || entry.url;
+    const links = await discoverLinks(
+      browserSession.page,
+      sourceUrl,
+      seedUrl,
+      options
+    );
     
-    // Filter & Enqueue
-    for (const rawLink of links.sameDomain) {
-      const norm = normalizeUrl(rawLink, entry.url);
-      if (!norm) continue;
-      
-      const policy = isAllowedByPolicy(norm, seedUrl, options);
-      if (policy.allowed) {
-        enqueue(state, norm, entry.depth + 1, options);
-      }
+    // Queue normalized internal targets once while preserving every link record.
+    const queueCandidates = new Set(
+      links.internal.map((link) => link.normalizedUrl).filter(Boolean)
+    );
+
+    for (const normalizedUrl of queueCandidates) {
+      const securityCheck = await validateTargetUrl(normalizedUrl);
+      if (!securityCheck.safe) continue;
+
+      enqueue(state, normalizedUrl, entry.depth + 1, options);
     }
 
     state.results.set(entry.url, {
@@ -372,6 +369,7 @@ async function _processUrl(entry, state, options, seedUrl) {
       status: "success",
       ...pageAudit,
       lighthouse,
+      links,
     });
 
   } catch (err) {
@@ -528,67 +526,79 @@ function _buildStubResult(seedUrl, options, status = "planned") {
   };
 }
 
-/**
- * Classify a single raw href value.
- *
- * @param {string} rawHref      - The href string taken directly from the DOM.
- * @param {string} baseUrl      - The absolute URL of the page (for relative resolution).
- * @param {string} seedHostname - Hostname extracted from baseUrl.
- * @returns {{ bucket: 'sameDomain'|'external'|'discard', resolved: string }}
- */
-function _classifyHref(rawHref, baseUrl, seedHostname) {
-  const trimmed = (rawHref || "").trim();
+/** Normalize human-readable DOM text to a stable single-line value. */
+function _normalizeWhitespace(value) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
 
-  // ── Empty href ────────────────────────────────────────────────────────────
-  if (!trimmed) {
-    return { bucket: "discard", resolved: trimmed };
+function _normalizeRelTokens(value) {
+  if (typeof value !== "string") return [];
+
+  return Array.from(
+    new Set(value.toLowerCase().split(/\s+/).filter(Boolean))
+  );
+}
+
+function _createDiscardedLinkRecord(extractedLink, sourceUrl, reason) {
+  const rel = _normalizeRelTokens(extractedLink.rel);
+
+  return {
+    sourceUrl,
+    rawHref: typeof extractedLink.rawHref === "string" ? extractedLink.rawHref : "",
+    targetUrl: null,
+    normalizedUrl: null,
+    anchorText: _normalizeWhitespace(extractedLink.anchorText),
+    rel,
+    nofollow: rel.includes("nofollow"),
+    reason,
+  };
+}
+
+function _createLinkRecord(extractedLink, sourceUrl, seedUrl, options) {
+  const rawHref = typeof extractedLink.rawHref === "string"
+    ? extractedLink.rawHref
+    : "";
+  const trimmedHref = rawHref.trim();
+
+  if (!trimmedHref) {
+    return _createDiscardedLinkRecord(extractedLink, sourceUrl, "empty-href");
   }
 
-  // ── Fragment-only (e.g. "#section", "#") ─────────────────────────────────
-  if (trimmed.startsWith("#")) {
-    return { bucket: "discard", resolved: trimmed };
+  if (trimmedHref.startsWith("#")) {
+    return _createDiscardedLinkRecord(extractedLink, sourceUrl, "fragment-only");
   }
 
-  // ── Non-HTTP schemes that can never be crawled ────────────────────────────
-  // Checked before URL resolution so that "mailto:x" doesn't accidentally
-  // resolve against baseUrl (it wouldn't, but explicit is safer).
-  const lowerTrimmed = trimmed.toLowerCase();
-  const DISCARD_SCHEMES = ["mailto:", "tel:", "javascript:", "data:", "blob:", "sms:", "ftp:"];
-  for (const scheme of DISCARD_SCHEMES) {
-    if (lowerTrimmed.startsWith(scheme)) {
-      return { bucket: "discard", resolved: trimmed };
-    }
-  }
-
-  // ── Attempt URL resolution ────────────────────────────────────────────────
-  let resolved;
+  let target;
   try {
-    resolved = new URL(trimmed, baseUrl).href;
+    target = new URL(trimmedHref, sourceUrl);
   } catch (_) {
-    // Malformed — cannot be crawled.
-    return { bucket: "discard", resolved: trimmed };
+    return _createDiscardedLinkRecord(extractedLink, sourceUrl, "malformed-url");
   }
 
-  // ── After resolution, only HTTP/HTTPS are crawlable ──────────────────────
-  let parsedResolved;
-  try {
-    parsedResolved = new URL(resolved);
-  } catch (_) {
-    return { bucket: "discard", resolved: trimmed };
+  if (target.protocol !== "http:" && target.protocol !== "https:") {
+    return _createDiscardedLinkRecord(extractedLink, sourceUrl, "unsupported-scheme");
   }
 
-  if (parsedResolved.protocol !== "http:" && parsedResolved.protocol !== "https:") {
-    return { bucket: "discard", resolved: trimmed };
+  const targetUrl = target.href;
+  const normalizedUrl = normalizeUrl(targetUrl);
+  if (!normalizedUrl) {
+    return _createDiscardedLinkRecord(extractedLink, sourceUrl, "malformed-url");
   }
 
-  // ── Classify by hostname ──────────────────────────────────────────────────
-  // Phase 5.2: exact hostname match only.
-  // Phase 5.4 will refine this with www-equivalence and subdomain policy.
-  if (parsedResolved.hostname === seedHostname) {
-    return { bucket: "sameDomain", resolved };
-  }
+  const policy = isAllowedByPolicy(normalizedUrl, seedUrl, options);
+  const classification = policy.allowed ? "internal" : "external";
+  const rel = _normalizeRelTokens(extractedLink.rel);
 
-  return { bucket: "external", resolved };
+  return {
+    sourceUrl,
+    rawHref,
+    targetUrl,
+    normalizedUrl,
+    anchorText: _normalizeWhitespace(extractedLink.anchorText),
+    classification,
+    rel,
+    nofollow: rel.includes("nofollow"),
+  };
 }
 
 module.exports = {

@@ -16,6 +16,7 @@ const SUITES = Object.freeze({
   integration: Object.freeze([
     "rateLimiter.test.js",
     "urlDiscovery.test.js",
+    "structuredLinks.test.js",
     "crawler.service.test.js",
   ]),
 });
@@ -66,6 +67,7 @@ function run() {
 
   const childEnvironment = {
     ...process.env,
+    CHROME_LOG_FILE: path.join(tempRoot, "chromium-debug.log"),
     SCREENSHOT_DIR: screenshotDir,
     TEMP: tempRoot,
     TMP: tempRoot,

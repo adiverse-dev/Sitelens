@@ -33,7 +33,17 @@
 
 const http      = require("http");
 const { chromium } = require("playwright");
-const { discoverLinks } = require("../src/services/crawler.service");
+const { discoverLinks: discoverStructuredLinks } = require("../src/services/crawler.service");
+
+async function discoverLinks(page, baseUrl) {
+  const links = await discoverStructuredLinks(page, baseUrl);
+
+  return {
+    sameDomain: links.internal.map((link) => link.targetUrl),
+    external: links.external.map((link) => link.targetUrl),
+    discarded: links.discarded.map((link) => link.rawHref),
+  };
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 

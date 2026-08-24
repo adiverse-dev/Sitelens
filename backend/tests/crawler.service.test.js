@@ -31,8 +31,11 @@ function buildTestApp() {
   const pages = {
     "/": `
       <html><body><h1>Home</h1>
-      <a href="/about">About</a>
+      <a href="/about#team" rel="nofollow sponsored">About overview</a>
+      <a href="/about/">About duplicate</a>
       <a href="/products">Products</a>
+      <a href="https://outside.invalid/resource">External resource</a>
+      <a href="#top">Back to top</a>
       </body></html>
     `,
     "/about": `
@@ -126,6 +129,32 @@ async function runTest(label, testFn) {
       assert.strictEqual(result.crawl.pagesCrawled, 3, "Should crawl 3 pages");
       assert.ok(result.siteWide, "siteWide object must exist");
       assert.strictEqual(result.siteWide.pages.crawled, 3, "siteWide.pages.crawled should match");
+
+      const rootPage = result.pages.find((page) => page.url === `${baseUrl}/`);
+      assert.ok(rootPage, "Root page result should exist");
+      assert.ok(rootPage.links, "Successful page should include structured links");
+      assert.deepStrictEqual(rootPage.links.summary, {
+        internal: 3,
+        external: 1,
+        discarded: 1,
+      });
+
+      const aboutEvidence = rootPage.links.internal.filter(
+        (link) => link.normalizedUrl === `${baseUrl}/about`
+      );
+      assert.strictEqual(aboutEvidence.length, 2, "Both About anchors should be retained");
+      assert.deepStrictEqual(
+        aboutEvidence.map((link) => link.anchorText),
+        ["About overview", "About duplicate"]
+      );
+      assert.deepStrictEqual(aboutEvidence[0].rel, ["nofollow", "sponsored"]);
+      assert.strictEqual(aboutEvidence[0].nofollow, true);
+      assert.strictEqual(aboutEvidence[0].sourceUrl, `${baseUrl}/`);
+
+      const crawledAboutPages = result.pages.filter(
+        (page) => page.url === `${baseUrl}/about`
+      );
+      assert.strictEqual(crawledAboutPages.length, 1, "Duplicate target should be crawled once");
     });
 
     await runTest("Test D — concurrency limit", async (label) => {
