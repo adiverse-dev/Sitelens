@@ -52,6 +52,7 @@ async function runTests() {
   const duplicateTwo = retainedLink(duplicateTarget);
   const duplicateThree = retainedLink(duplicateTarget);
   const external = retainedLink(externalTarget, "external");
+  const externalDuplicate = retainedLink(externalTarget, "external");
   const limited = retainedLink(limitedTarget);
   const discarded = {
     sourceUrl: "https://site.invalid/",
@@ -65,7 +66,7 @@ async function runTests() {
   };
   const pages = [
     pageWithLinks([duplicateOne, duplicateTwo], [external], [discarded]),
-    pageWithLinks([duplicateThree, limited]),
+    pageWithLinks([duplicateThree, limited], [externalDuplicate]),
   ];
   const calls = [];
 
@@ -82,6 +83,20 @@ async function runTests() {
           location: targetUrl === externalTarget
             ? "https://outside.invalid/login"
             : null,
+          redirected: targetUrl === externalTarget,
+          redirectChain: targetUrl === externalTarget
+            ? [{
+              url: externalTarget,
+              statusCode: 302,
+              location: "https://outside.invalid/login",
+              responseTimeMs: 1,
+            }]
+            : [],
+          finalUrl: targetUrl === externalTarget
+            ? "https://outside.invalid/login"
+            : targetUrl,
+          finalStatusCode: 200,
+          finalState: "ok",
         });
       },
     }
@@ -93,15 +108,29 @@ async function runTests() {
     processedTargets: 2,
     uncheckedTargets: 1,
     limitHit: true,
-    limits: { maxTargets: 2, concurrency: 2, timeoutMs: 100 },
+    limits: { maxTargets: 2, concurrency: 2, maxRedirects: 5, timeoutMs: 100 },
   });
   assert.strictEqual(duplicateOne.check.state, "ok");
   assert.deepStrictEqual(duplicateOne.check, duplicateTwo.check);
   assert.deepStrictEqual(duplicateTwo.check, duplicateThree.check);
   assert.notStrictEqual(duplicateOne.check, duplicateTwo.check);
   assert.strictEqual(external.check.state, "redirect");
+  assert.strictEqual(external.check.statusCode, 302);
+  assert.strictEqual(external.check.finalState, "ok");
+  assert.strictEqual(external.check.health, "redirected");
+  assert.strictEqual(external.check.isBroken, false);
+  assert.deepStrictEqual(external.check, externalDuplicate.check);
+  assert.notStrictEqual(external.check, externalDuplicate.check);
+  assert.notStrictEqual(external.check.redirectChain, externalDuplicate.check.redirectChain);
+  assert.notStrictEqual(
+    external.check.redirectChain[0],
+    externalDuplicate.check.redirectChain[0]
+  );
   assert.strictEqual(limited.check.state, "unchecked");
   assert.strictEqual(limited.check.errorCode, "TARGET_LIMIT_EXCEEDED");
+  assert.strictEqual(limited.check.finalState, "unchecked");
+  assert.strictEqual(limited.check.health, "unchecked");
+  assert.strictEqual(limited.check.isBroken, null);
   assert.strictEqual(Object.hasOwn(discarded, "check"), false);
 
   const failureGood = retainedLink("https://site.invalid/good");
@@ -118,6 +147,9 @@ async function runTests() {
   );
   assert.strictEqual(failureGood.check.state, "ok");
   assert.strictEqual(failureBad.check.state, "network_error");
+  assert.strictEqual(failureBad.check.finalState, "network_error");
+  assert.strictEqual(failureBad.check.health, "unreachable");
+  assert.strictEqual(failureBad.check.isBroken, null);
   assert.strictEqual(failureBad.check.errorCode, "NETWORK_ERROR");
   assert.strictEqual(failureBad.check.errorMessage.includes("sensitive"), false);
 
@@ -143,8 +175,13 @@ async function runTests() {
   assert.ok(concurrencyLinks.every((link) => link.check.state === "ok"));
 
   assert.deepStrictEqual(
-    resolveLimits({ maxTargets: 999999, concurrency: 999999, timeoutMs: 999999 }),
-    { maxTargets: 1000, concurrency: 10, timeoutMs: 15000 }
+    resolveLimits({
+      maxTargets: 999999,
+      concurrency: 999999,
+      maxRedirects: 999999,
+      timeoutMs: 999999,
+    }),
+    { maxTargets: 1000, concurrency: 10, maxRedirects: 10, timeoutMs: 15000 }
   );
 
   console.log("Link-check mapping unit tests passed");

@@ -17,6 +17,7 @@ const SUITES = Object.freeze({
   integration: Object.freeze([
     "rateLimiter.test.js",
     "linkChecker.integration.test.js",
+    "redirectChain.integration.test.js",
     "urlDiscovery.test.js",
     "structuredLinks.test.js",
     "crawler.service.test.js",

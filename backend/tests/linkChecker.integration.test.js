@@ -94,7 +94,12 @@ async function runHttpChecks() {
     assert.strictEqual(redirect.state, "redirect");
     assert.strictEqual(redirect.statusCode, 302);
     assert.strictEqual(redirect.location, `${baseUrl}/redirect-target`);
-    assert.strictEqual(redirectTargetHits, 0);
+    assert.strictEqual(redirect.finalState, "ok");
+    assert.strictEqual(redirect.finalStatusCode, 200);
+    assert.strictEqual(redirect.health, "redirected");
+    assert.strictEqual(redirect.isBroken, false);
+    assert.strictEqual(redirect.redirectCount, 1);
+    assert.strictEqual(redirectTargetHits, 1);
 
     const unauthorized = await checkLinkTarget(`${baseUrl}/unauthorized`, options);
     assert.strictEqual(unauthorized.state, "restricted");
@@ -187,7 +192,7 @@ async function runPostCrawlContractCheck() {
         processedTargets: 1,
         uncheckedTargets: 0,
         limitHit: false,
-        limits: { maxTargets: 200, concurrency: 4, timeoutMs: 5000 },
+        limits: { maxTargets: 200, concurrency: 4, maxRedirects: 5, timeoutMs: 5000 },
       },
       pages: [{
         status: "success",
@@ -202,12 +207,26 @@ async function runPostCrawlContractCheck() {
             rel: [],
             nofollow: false,
             check: {
-              state: "ok",
-              statusCode: 200,
-              responseTimeMs: 1,
+              state: "redirect",
+              statusCode: 301,
+              responseTimeMs: 2,
               errorCode: null,
               errorMessage: null,
-              location: null,
+              location: "https://public.example/new-about",
+              redirected: true,
+              redirectCount: 1,
+              redirectChain: [{
+                url: "https://public.example/about",
+                statusCode: 301,
+                location: "https://public.example/new-about",
+                responseTimeMs: 1,
+              }],
+              finalUrl: "https://public.example/new-about",
+              finalStatusCode: 200,
+              finalState: "ok",
+              health: "redirected",
+              isBroken: false,
+              redirectProblem: null,
             },
           }],
           external: [],
@@ -243,8 +262,11 @@ async function runPostCrawlContractCheck() {
       runLighthouse: false,
     });
     assert.strictEqual(body.linkChecks.uniqueTargets, 1);
-    assert.strictEqual(body.pages[0].links.internal[0].check.state, "ok");
-    assert.strictEqual(body.pages[0].links.internal[0].check.statusCode, 200);
+    assert.strictEqual(body.pages[0].links.internal[0].check.state, "redirect");
+    assert.strictEqual(body.pages[0].links.internal[0].check.statusCode, 301);
+    assert.strictEqual(body.pages[0].links.internal[0].check.finalState, "ok");
+    assert.strictEqual(body.pages[0].links.internal[0].check.finalStatusCode, 200);
+    assert.strictEqual(body.pages[0].links.internal[0].check.health, "redirected");
   } finally {
     await close(server);
     crawlerService.runCrawl = originalRunCrawl;

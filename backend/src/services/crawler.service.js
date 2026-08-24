@@ -43,6 +43,7 @@ const {
   CRAWLER_CONCURRENCY,
   LINK_CHECK_MAX_TARGETS,
   LINK_CHECK_CONCURRENCY,
+  LINK_CHECK_MAX_REDIRECTS,
   CRAWLER_REQUEST_TIMEOUT_MS,
 } = require("../utils/constants");
 const { normalizeUrl, dedupeUrls } = require("../utils/urlNormalizer");
@@ -542,6 +543,7 @@ function _buildStubResult(seedUrl, options, status = "planned") {
       limits: {
         maxTargets: LINK_CHECK_MAX_TARGETS,
         concurrency: LINK_CHECK_CONCURRENCY,
+        maxRedirects: LINK_CHECK_MAX_REDIRECTS,
         timeoutMs: CRAWLER_REQUEST_TIMEOUT_MS,
       },
     },

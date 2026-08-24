@@ -33,6 +33,7 @@ const CRAWLER_PAGE_TIMEOUT_MS = Number(process.env.CRAWLER_PAGE_TIMEOUT_MS) || 2
 // Phase 6B link checks are deliberately independent from Playwright crawl limits.
 const LINK_CHECK_MAX_TARGETS_HARD_LIMIT = 1000;
 const LINK_CHECK_CONCURRENCY_HARD_LIMIT = 10;
+const LINK_CHECK_MAX_REDIRECTS_HARD_LIMIT = 10;
 const CRAWLER_REQUEST_TIMEOUT_HARD_LIMIT_MS = 15000;
 
 function readBoundedInteger(name, fallback, minimum, maximum) {
@@ -54,6 +55,13 @@ const LINK_CHECK_CONCURRENCY = readBoundedInteger(
   4,
   1,
   LINK_CHECK_CONCURRENCY_HARD_LIMIT
+);
+// Maximum number of redirect transitions followed for one unique target.
+const LINK_CHECK_MAX_REDIRECTS = readBoundedInteger(
+  "LINK_CHECK_MAX_REDIRECTS",
+  5,
+  0,
+  LINK_CHECK_MAX_REDIRECTS_HARD_LIMIT
 );
 // Total target-check deadline, including the optional HEAD-to-GET fallback.
 const CRAWLER_REQUEST_TIMEOUT_MS = readBoundedInteger(
@@ -87,6 +95,8 @@ module.exports = {
   LINK_CHECK_MAX_TARGETS_HARD_LIMIT,
   LINK_CHECK_CONCURRENCY,
   LINK_CHECK_CONCURRENCY_HARD_LIMIT,
+  LINK_CHECK_MAX_REDIRECTS,
+  LINK_CHECK_MAX_REDIRECTS_HARD_LIMIT,
   CRAWLER_REQUEST_TIMEOUT_MS,
   CRAWLER_REQUEST_TIMEOUT_HARD_LIMIT_MS,
   CRAWL_RATE_LIMIT_WINDOW_MS,

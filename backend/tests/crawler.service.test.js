@@ -168,6 +168,9 @@ async function runTest(label, testFn) {
       assert.strictEqual(aboutEvidence[0].nofollow, true);
       assert.strictEqual(aboutEvidence[0].sourceUrl, `${baseUrl}/`);
       assert.strictEqual(aboutEvidence[0].check.state, "ok");
+      assert.strictEqual(aboutEvidence[0].check.finalState, "ok");
+      assert.strictEqual(aboutEvidence[0].check.health, "healthy");
+      assert.strictEqual(aboutEvidence[0].check.isBroken, false);
       assert.deepStrictEqual(aboutEvidence[0].check, aboutEvidence[1].check);
       assert.strictEqual(rootPage.links.external[0].check.state, "ok");
       assert.strictEqual(Object.hasOwn(rootPage.links.discarded[0], "check"), false);

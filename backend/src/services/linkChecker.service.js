@@ -10,6 +10,8 @@ const {
   LINK_CHECK_MAX_TARGETS_HARD_LIMIT,
   LINK_CHECK_CONCURRENCY,
   LINK_CHECK_CONCURRENCY_HARD_LIMIT,
+  LINK_CHECK_MAX_REDIRECTS,
+  LINK_CHECK_MAX_REDIRECTS_HARD_LIMIT,
   CRAWLER_REQUEST_TIMEOUT_MS,
   CRAWLER_REQUEST_TIMEOUT_HARD_LIMIT_MS,
 } = require("../utils/constants");
@@ -25,6 +27,36 @@ const CHECK_STATES = new Set([
   "blocked",
   "unchecked",
 ]);
+
+const HEALTH_STATES = new Set([
+  "healthy",
+  "redirected",
+  "restricted",
+  "broken",
+  "unreachable",
+  "blocked",
+  "unchecked",
+]);
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const REDIRECT_PROBLEMS = new Set([
+  "redirect_loop",
+  "too_many_redirects",
+  "missing_location",
+  "invalid_location",
+  "unsupported_scheme",
+  "credentials_not_allowed",
+  "blocked_destination",
+  "unsupported_redirect_status",
+]);
+
+const SECURITY_REDIRECT_PROBLEMS = new Set([
+  "unsupported_scheme",
+  "credentials_not_allowed",
+  "blocked_destination",
+]);
+
+const VALIDATION_TIMEOUT = Symbol("validation-timeout");
 
 const EXPOSED_NETWORK_CODES = new Set([
   "ECONNREFUSED",
@@ -46,7 +78,33 @@ function createCheckResult({
   errorCode = null,
   errorMessage = null,
   location = null,
+  redirected,
+  redirectCount,
+  redirectChain = [],
+  finalUrl = null,
+  finalStatusCode,
+  finalState,
+  health,
+  isBroken,
+  redirectProblem = null,
 }) {
+  const resolvedRedirectCount = Number.isInteger(redirectCount)
+    ? Math.max(0, redirectCount)
+    : redirectChain.length;
+  const resolvedRedirected = typeof redirected === "boolean"
+    ? redirected
+    : resolvedRedirectCount > 0;
+  const resolvedFinalState = finalState === undefined ? state : finalState;
+  const resolvedFinalStatusCode = finalStatusCode === undefined
+    ? statusCode
+    : finalStatusCode;
+  const resolvedHealth = HEALTH_STATES.has(health)
+    ? health
+    : classifyHealth(resolvedFinalState, resolvedRedirected, redirectProblem);
+  const resolvedIsBroken = isBroken === true || isBroken === false || isBroken === null
+    ? isBroken
+    : classifyBroken(resolvedHealth);
+
   return {
     state,
     statusCode,
@@ -54,7 +112,42 @@ function createCheckResult({
     errorCode,
     errorMessage,
     location,
+    redirected: resolvedRedirected,
+    redirectCount: resolvedRedirectCount,
+    redirectChain,
+    finalUrl,
+    finalStatusCode: resolvedFinalStatusCode,
+    finalState: resolvedFinalState,
+    health: resolvedHealth,
+    isBroken: resolvedIsBroken,
+    redirectProblem,
   };
+}
+
+function classifyHealth(finalState, redirected, redirectProblem) {
+  if (redirectProblem) {
+    return SECURITY_REDIRECT_PROBLEMS.has(redirectProblem)
+      ? "blocked"
+      : "broken";
+  }
+
+  if (finalState === "ok") return redirected ? "redirected" : "healthy";
+  if (finalState === "restricted") return "restricted";
+  if (finalState === "client_error" || finalState === "server_error" || finalState === "redirect") {
+    return "broken";
+  }
+  if (finalState === "timeout" || finalState === "network_error") return "unreachable";
+  if (finalState === "blocked") return "blocked";
+  if (finalState === "unchecked") return "unchecked";
+  return "unreachable";
+}
+
+function classifyBroken(health) {
+  if (health === "broken") return true;
+  if (health === "healthy" || health === "redirected" || health === "restricted") {
+    return false;
+  }
+  return null;
 }
 
 function createUncheckedResult(errorCode = "TARGET_LIMIT_EXCEEDED") {
@@ -66,6 +159,10 @@ function createUncheckedResult(errorCode = "TARGET_LIMIT_EXCEEDED") {
     state: "unchecked",
     errorCode,
     errorMessage,
+    finalState: "unchecked",
+    finalStatusCode: null,
+    health: "unchecked",
+    isBroken: null,
   });
 }
 
@@ -96,12 +193,33 @@ function sanitizeLocation(location, targetUrl) {
   }
 }
 
+function sanitizeUrl(value) {
+  return sanitizeLocation(value, value);
+}
+
+function normalizeRedirectUrl(value) {
+  try {
+    const parsed = new URL(value);
+    parsed.hash = "";
+    if (parsed.pathname !== "/") {
+      parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    }
+    return parsed.href;
+  } catch (_) {
+    return null;
+  }
+}
+
 function createBlockedResult(errorCode, responseTimeMs) {
   return createCheckResult({
     state: "blocked",
     responseTimeMs,
     errorCode,
     errorMessage: "Target URL is not allowed",
+    finalState: "blocked",
+    finalStatusCode: null,
+    health: "blocked",
+    isBroken: null,
   });
 }
 
@@ -111,6 +229,10 @@ function createNetworkErrorResult(errorCode, responseTimeMs) {
     responseTimeMs,
     errorCode,
     errorMessage: "Link check request failed",
+    finalState: "network_error",
+    finalStatusCode: null,
+    health: "unreachable",
+    isBroken: null,
   });
 }
 
@@ -120,11 +242,63 @@ function createTimeoutResult(responseTimeMs) {
     responseTimeMs,
     errorCode: "REQUEST_TIMEOUT",
     errorMessage: "Link check timed out",
+    finalState: "timeout",
+    finalStatusCode: null,
+    health: "unreachable",
+    isBroken: null,
   });
 }
 
 function elapsedSince(startedAt) {
   return Math.max(0, Date.now() - startedAt);
+}
+
+function remainingTime(context) {
+  return context.timeoutMs - elapsedSince(context.startedAt);
+}
+
+function finalizeCheck(context, outcome) {
+  const firstResponse = context.firstResponse;
+  const finalState = outcome.finalState;
+
+  return createCheckResult({
+    state: firstResponse ? firstResponse.state : finalState,
+    statusCode: firstResponse ? firstResponse.statusCode : (outcome.finalStatusCode ?? null),
+    responseTimeMs: elapsedSince(context.startedAt),
+    errorCode: outcome.errorCode || null,
+    errorMessage: outcome.errorMessage || null,
+    location: firstResponse ? firstResponse.location : null,
+    redirected: context.redirectChain.length > 0,
+    redirectCount: context.redirectChain.length,
+    redirectChain: context.redirectChain,
+    finalUrl: outcome.finalUrl === undefined
+      ? sanitizeUrl(context.currentUrl.href)
+      : outcome.finalUrl,
+    finalStatusCode: outcome.finalStatusCode ?? null,
+    finalState,
+    redirectProblem: outcome.redirectProblem || null,
+  });
+}
+
+function finalizeRedirectProblem(context, redirectProblem, statusCode) {
+  const details = {
+    redirect_loop: ["REDIRECT_LOOP", "Redirect loop detected", "redirect"],
+    too_many_redirects: ["TOO_MANY_REDIRECTS", "Redirect hop limit exceeded", "redirect"],
+    missing_location: ["MISSING_LOCATION", "Redirect response is missing Location", "redirect"],
+    invalid_location: ["INVALID_LOCATION", "Redirect Location is invalid", "redirect"],
+    unsupported_scheme: ["UNSUPPORTED_SCHEME", "Redirect protocol is not allowed", "blocked"],
+    credentials_not_allowed: ["CREDENTIALS_NOT_ALLOWED", "Redirect credentials are not allowed", "blocked"],
+    blocked_destination: ["SSRF_BLOCKED", "Redirect destination is not allowed", "blocked"],
+    unsupported_redirect_status: ["UNSUPPORTED_REDIRECT_STATUS", "Redirect status is not followed", "redirect"],
+  }[redirectProblem];
+
+  return finalizeCheck(context, {
+    finalState: details[2],
+    finalStatusCode: details[2] === "redirect" ? statusCode : null,
+    errorCode: details[0],
+    errorMessage: details[1],
+    redirectProblem,
+  });
 }
 
 function requestHeaders(target, address, method, timeoutMs) {
@@ -193,11 +367,94 @@ function requestHeaders(target, address, method, timeoutMs) {
   });
 }
 
+async function requestHop(context, address) {
+  let remainingMs = remainingTime(context);
+  if (remainingMs <= 0) {
+    const error = new Error("Link check timed out");
+    error.code = "LINK_CHECK_TIMEOUT";
+    throw error;
+  }
+
+  let response = await requestHeaders(
+    context.currentUrl,
+    address,
+    "HEAD",
+    remainingMs
+  );
+
+  if (response.statusCode === 405 || response.statusCode === 501) {
+    remainingMs = remainingTime(context);
+    if (remainingMs <= 0) {
+      const error = new Error("Link check timed out");
+      error.code = "LINK_CHECK_TIMEOUT";
+      throw error;
+    }
+    response = await requestHeaders(
+      context.currentUrl,
+      address,
+      "GET",
+      remainingMs
+    );
+  }
+
+  return response;
+}
+
+function networkErrorCode(error) {
+  return error && EXPOSED_NETWORK_CODES.has(error.code)
+    ? error.code
+    : "NETWORK_ERROR";
+}
+
+async function validateHop(context, validateTarget) {
+  const validationTimeMs = remainingTime(context);
+  if (validationTimeMs <= 0) return { timeout: true };
+
+  let timeoutId;
+  let securityCheck;
+  try {
+    securityCheck = await Promise.race([
+      Promise.resolve(validateTarget(context.currentUrl.href)),
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve(VALIDATION_TIMEOUT), validationTimeMs);
+      }),
+    ]);
+  } catch (_) {
+    return { blocked: true, errorCode: "SECURITY_VALIDATION_FAILED" };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+
+  if (securityCheck === VALIDATION_TIMEOUT) return { timeout: true };
+  if (remainingTime(context) <= 0) return { timeout: true };
+
+  if (!securityCheck || securityCheck.safe !== true) {
+    const reason = securityCheck && securityCheck.reason;
+    if (reason === "DNS resolution failed" || reason === "DNS returning no address") {
+      return { networkError: true, errorCode: "DNS_ERROR" };
+    }
+    return { blocked: true, errorCode: "SSRF_BLOCKED" };
+  }
+
+  const resolvedAddresses = Array.isArray(securityCheck.resolvedAddresses)
+    ? securityCheck.resolvedAddresses.filter((address) => net.isIP(address) !== 0)
+    : [];
+
+  if (resolvedAddresses.length === 0) {
+    return { blocked: true, errorCode: "SECURITY_VALIDATION_FAILED" };
+  }
+
+  return { address: resolvedAddresses[0] };
+}
+
 async function checkLinkTarget(targetUrl, options = {}) {
   const startedAt = Date.now();
   const timeoutMs = Number.isInteger(options.timeoutMs) && options.timeoutMs > 0
     ? Math.min(options.timeoutMs, CRAWLER_REQUEST_TIMEOUT_HARD_LIMIT_MS)
     : CRAWLER_REQUEST_TIMEOUT_MS;
+  const maxRedirects = Number.isInteger(options.maxRedirects) && options.maxRedirects >= 0
+    ? Math.min(options.maxRedirects, LINK_CHECK_MAX_REDIRECTS_HARD_LIMIT)
+    : LINK_CHECK_MAX_REDIRECTS;
   const validateTarget = options.validateTargetUrl || urlValidator.validateTargetUrl;
 
   let target;
@@ -215,65 +472,167 @@ async function checkLinkTarget(targetUrl, options = {}) {
     return createBlockedResult("CREDENTIALS_NOT_ALLOWED", elapsedSince(startedAt));
   }
 
-  let securityCheck;
-  try {
-    securityCheck = await validateTarget(target.href);
-  } catch (_) {
-    return createBlockedResult("SECURITY_VALIDATION_FAILED", elapsedSince(startedAt));
-  }
+  const context = {
+    startedAt,
+    timeoutMs,
+    maxRedirects,
+    currentUrl: target,
+    firstResponse: null,
+    redirectChain: [],
+    redirectsFollowed: 0,
+    seenUrls: new Set([normalizeRedirectUrl(target.href)]),
+  };
 
-  if (!securityCheck || securityCheck.safe !== true) {
-    const reason = securityCheck && securityCheck.reason;
-    if (reason === "DNS resolution failed" || reason === "DNS returning no address") {
-      return createNetworkErrorResult("DNS_ERROR", elapsedSince(startedAt));
+  while (true) {
+    if (remainingTime(context) <= 0) {
+      return finalizeCheck(context, {
+        finalState: "timeout",
+        errorCode: "REQUEST_TIMEOUT",
+        errorMessage: "Link check timed out",
+      });
     }
-    return createBlockedResult("SSRF_BLOCKED", elapsedSince(startedAt));
-  }
 
-  const resolvedAddresses = Array.isArray(securityCheck.resolvedAddresses)
-    ? securityCheck.resolvedAddresses.filter((address) => net.isIP(address) !== 0)
-    : [];
+    const hopStartedAt = Date.now();
+    const validation = await validateHop(context, validateTarget);
 
-  // Never fall back to a second, unvalidated DNS lookup at connection time.
-  if (resolvedAddresses.length === 0) {
-    return createBlockedResult("SECURITY_VALIDATION_FAILED", elapsedSince(startedAt));
-  }
+    if (validation.timeout) {
+      return finalizeCheck(context, {
+        finalState: "timeout",
+        errorCode: "REQUEST_TIMEOUT",
+        errorMessage: "Link check timed out",
+      });
+    }
 
-  try {
-    let remainingMs = timeoutMs - elapsedSince(startedAt);
-    if (remainingMs <= 0) return createTimeoutResult(elapsedSince(startedAt));
+    if (validation.networkError) {
+      return finalizeCheck(context, {
+        finalState: "network_error",
+        errorCode: validation.errorCode,
+        errorMessage: "Link check request failed",
+      });
+    }
 
-    let response = await requestHeaders(target, resolvedAddresses[0], "HEAD", remainingMs);
+    if (validation.blocked) {
+      if (context.redirectChain.length > 0) {
+        return finalizeRedirectProblem(context, "blocked_destination", null);
+      }
+      return finalizeCheck(context, {
+        finalState: "blocked",
+        errorCode: validation.errorCode,
+        errorMessage: "Target URL is not allowed",
+      });
+    }
 
-    if (response.statusCode === 405 || response.statusCode === 501) {
-      remainingMs = timeoutMs - elapsedSince(startedAt);
-      if (remainingMs <= 0) return createTimeoutResult(elapsedSince(startedAt));
-      response = await requestHeaders(target, resolvedAddresses[0], "GET", remainingMs);
+    let response;
+    try {
+      response = await requestHop(context, validation.address);
+    } catch (error) {
+      if (error && error.code === "LINK_CHECK_TIMEOUT") {
+        return finalizeCheck(context, {
+          finalState: "timeout",
+          errorCode: "REQUEST_TIMEOUT",
+          errorMessage: "Link check timed out",
+        });
+      }
+      return finalizeCheck(context, {
+        finalState: "network_error",
+        errorCode: networkErrorCode(error),
+        errorMessage: "Link check request failed",
+      });
     }
 
     const state = classifyStatus(response.statusCode);
+    const location = state === "redirect"
+      ? sanitizeLocation(response.location, context.currentUrl.href)
+      : null;
+
+    if (!context.firstResponse) {
+      context.firstResponse = {
+        state,
+        statusCode: response.statusCode,
+        location,
+      };
+    }
+
+    if (REDIRECT_STATUSES.has(response.statusCode)) {
+      const chainEntry = {
+        url: sanitizeUrl(context.currentUrl.href),
+        statusCode: response.statusCode,
+        location: null,
+        responseTimeMs: elapsedSince(hopStartedAt),
+      };
+      const rawLocation = typeof response.location === "string"
+        ? response.location.trim()
+        : "";
+
+      if (!rawLocation) {
+        context.redirectChain.push(chainEntry);
+        return finalizeRedirectProblem(context, "missing_location", response.statusCode);
+      }
+
+      let redirectUrl;
+      try {
+        redirectUrl = new URL(rawLocation, context.currentUrl.href);
+      } catch (_) {
+        context.redirectChain.push(chainEntry);
+        return finalizeRedirectProblem(context, "invalid_location", response.statusCode);
+      }
+
+      chainEntry.location = sanitizeUrl(redirectUrl.href);
+      context.redirectChain.push(chainEntry);
+
+      if (redirectUrl.protocol !== "http:" && redirectUrl.protocol !== "https:") {
+        return finalizeRedirectProblem(context, "unsupported_scheme", response.statusCode);
+      }
+
+      if (redirectUrl.username || redirectUrl.password) {
+        return finalizeRedirectProblem(context, "credentials_not_allowed", response.statusCode);
+      }
+
+      const loopKey = normalizeRedirectUrl(redirectUrl.href);
+      if (!loopKey) {
+        return finalizeRedirectProblem(context, "invalid_location", response.statusCode);
+      }
+
+      if (context.seenUrls.has(loopKey)) {
+        return finalizeRedirectProblem(context, "redirect_loop", response.statusCode);
+      }
+
+      if (context.redirectsFollowed >= context.maxRedirects) {
+        return finalizeRedirectProblem(context, "too_many_redirects", response.statusCode);
+      }
+
+      context.seenUrls.add(loopKey);
+      context.redirectsFollowed += 1;
+      context.currentUrl = redirectUrl;
+      continue;
+    }
+
+    if (state === "redirect") {
+      context.redirectChain.push({
+        url: sanitizeUrl(context.currentUrl.href),
+        statusCode: response.statusCode,
+        location,
+        responseTimeMs: elapsedSince(hopStartedAt),
+      });
+      return finalizeRedirectProblem(
+        context,
+        "unsupported_redirect_status",
+        response.statusCode
+      );
+    }
+
     if (state === "network_error") {
-      return createNetworkErrorResult("UNEXPECTED_STATUS", elapsedSince(startedAt));
+      return finalizeCheck(context, {
+        finalState: "network_error",
+        errorCode: "UNEXPECTED_STATUS",
+        errorMessage: "Link check request failed",
+      });
     }
 
-    return createCheckResult({
-      state,
-      statusCode: response.statusCode,
-      responseTimeMs: elapsedSince(startedAt),
-      location: state === "redirect"
-        ? sanitizeLocation(response.location, target.href)
-        : null,
+    return finalizeCheck(context, {
+      finalState: state,
+      finalStatusCode: response.statusCode,
     });
-  } catch (error) {
-    const responseTimeMs = elapsedSince(startedAt);
-    if (error && error.code === "LINK_CHECK_TIMEOUT") {
-      return createTimeoutResult(responseTimeMs);
-    }
-
-    const errorCode = error && EXPOSED_NETWORK_CODES.has(error.code)
-      ? error.code
-      : "NETWORK_ERROR";
-    return createNetworkErrorResult(errorCode, responseTimeMs);
   }
 }
 
@@ -296,6 +655,12 @@ function resolveLimits(options = {}) {
       1,
       LINK_CHECK_CONCURRENCY_HARD_LIMIT
     ),
+    maxRedirects: boundedInteger(
+      options.maxRedirects,
+      LINK_CHECK_MAX_REDIRECTS,
+      0,
+      LINK_CHECK_MAX_REDIRECTS_HARD_LIMIT
+    ),
     timeoutMs: boundedInteger(
       options.timeoutMs,
       CRAWLER_REQUEST_TIMEOUT_MS,
@@ -305,10 +670,35 @@ function resolveLimits(options = {}) {
   };
 }
 
-function normalizeCheckResult(result, responseTimeMs) {
+function normalizeCheckResult(result, responseTimeMs, targetUrl = null) {
   if (!result || !CHECK_STATES.has(result.state)) {
     return createNetworkErrorResult("INVALID_CHECK_RESULT", responseTimeMs);
   }
+
+  const redirectProblem = REDIRECT_PROBLEMS.has(result.redirectProblem)
+    ? result.redirectProblem
+    : null;
+  const redirectChain = Array.isArray(result.redirectChain)
+    ? result.redirectChain
+      .slice(0, LINK_CHECK_MAX_REDIRECTS_HARD_LIMIT + 1)
+      .map((entry) => ({
+        url: entry && typeof entry.url === "string"
+          ? entry.url.slice(0, 2048)
+          : null,
+        statusCode: entry && Number.isInteger(entry.statusCode)
+          ? entry.statusCode
+          : null,
+        location: entry && typeof entry.location === "string"
+          ? entry.location.slice(0, 2048)
+          : null,
+        responseTimeMs: entry && Number.isFinite(entry.responseTimeMs)
+          ? Math.max(0, Math.round(entry.responseTimeMs))
+          : null,
+      }))
+    : [];
+  const finalState = CHECK_STATES.has(result.finalState)
+    ? result.finalState
+    : result.state;
 
   return createCheckResult({
     state: result.state,
@@ -325,7 +715,33 @@ function normalizeCheckResult(result, responseTimeMs) {
     location: typeof result.location === "string"
       ? result.location.slice(0, 2048)
       : null,
+    redirected: typeof result.redirected === "boolean"
+      ? result.redirected
+      : redirectChain.length > 0,
+    redirectCount: redirectChain.length,
+    redirectChain,
+    finalUrl: typeof result.finalUrl === "string"
+      ? result.finalUrl.slice(0, 2048)
+      : (redirectChain.length === 0 ? sanitizeUrl(targetUrl) : null),
+    finalStatusCode: Number.isInteger(result.finalStatusCode)
+      ? result.finalStatusCode
+      : (redirectChain.length === 0 && Number.isInteger(result.statusCode)
+        ? result.statusCode
+        : null),
+    finalState,
+    health: HEALTH_STATES.has(result.health) ? result.health : undefined,
+    isBroken: result.isBroken === true || result.isBroken === false || result.isBroken === null
+      ? result.isBroken
+      : undefined,
+    redirectProblem,
   });
+}
+
+function cloneCheckResult(result) {
+  return {
+    ...result,
+    redirectChain: result.redirectChain.map((entry) => ({ ...entry })),
+  };
 }
 
 async function applyLinkChecks(pages, options = {}, dependencies = {}) {
@@ -407,7 +823,10 @@ async function applyLinkChecks(pages, options = {}, dependencies = {}) {
       const startedAt = Date.now();
       let result;
       try {
-        result = await checkTarget(targetUrl, { timeoutMs: limits.timeoutMs });
+        result = await checkTarget(targetUrl, {
+          timeoutMs: limits.timeoutMs,
+          maxRedirects: limits.maxRedirects,
+        });
       } catch (_) {
         result = createNetworkErrorResult(
           "NETWORK_ERROR",
@@ -417,7 +836,7 @@ async function applyLinkChecks(pages, options = {}, dependencies = {}) {
 
       resultsByTarget.set(
         targetUrl,
-        normalizeCheckResult(result, elapsedSince(startedAt))
+        normalizeCheckResult(result, elapsedSince(startedAt), targetUrl)
       );
     }
   });
@@ -427,7 +846,7 @@ async function applyLinkChecks(pages, options = {}, dependencies = {}) {
   for (const [targetUrl, records] of occurrencesByTarget) {
     const result = resultsByTarget.get(targetUrl) || createUncheckedResult("NOT_PROCESSED");
     for (const record of records) {
-      record.check = { ...result };
+      record.check = cloneCheckResult(result);
     }
   }
 
