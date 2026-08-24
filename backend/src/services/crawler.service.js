@@ -54,6 +54,7 @@ const { runLighthouseAudit, createFailedLighthouseResult } = require("./lighthou
 const { auditRobotsTxt } = require("./robotsAudit.service");
 const { auditSitemap } = require("./sitemapAudit.service");
 const { aggregateSiteResults } = require("../utils/siteAggregator");
+const { aggregateLinkHealth } = require("../utils/linkHealthAggregator");
 const { Semaphore } = require("../utils/semaphore");
 const { applyLinkChecks } = require("./linkChecker.service");
 
@@ -120,6 +121,7 @@ const { applyLinkChecks } = require("./linkChecker.service");
  * @property {CrawlSummary} crawl      - High-level crawl statistics.
  * @property {Object|null}  siteWide   - Site-level aggregation (Phase 5.7).
  * @property {Object}       linkChecks - Phase 6B unique-target check summary.
+ * @property {Object}       linkHealth - Phase 6D site-wide link findings.
  * @property {Object[]}     pages      - Per-page audit results (Phase 5.6).
  */
 
@@ -232,6 +234,7 @@ async function runCrawl(seedUrl, options, dependencies = {}) {
     {},
     { checkTarget: dependencies.checkLinkTarget }
   );
+  const linkHealth = aggregateLinkHealth(pages);
   const completedAt = Date.now();
 
   const siteWide = aggregateSiteResults(pages, {
@@ -263,6 +266,7 @@ async function runCrawl(seedUrl, options, dependencies = {}) {
       },
       siteWide,
       linkChecks,
+      linkHealth,
       pages,
   };
 }
@@ -547,6 +551,7 @@ function _buildStubResult(seedUrl, options, status = "planned") {
         timeoutMs: CRAWLER_REQUEST_TIMEOUT_MS,
       },
     },
+    linkHealth: aggregateLinkHealth([]),
     pages: [],        // Phase 5.6
   };
 }

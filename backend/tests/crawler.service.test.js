@@ -180,6 +180,20 @@ async function runTest(label, testFn) {
         "Every retained normalized target should be checked once"
       );
       assert.strictEqual(result.linkChecks.uniqueTargets, checkedTargets.length);
+      assert.ok(result.linkHealth, "linkHealth object must exist");
+      assert.strictEqual(result.linkHealth.summary.uniqueTargets, checkedTargets.length);
+      assert.strictEqual(result.linkHealth.summary.totalOccurrences, 6);
+      assert.deepStrictEqual(result.linkHealth.summary.internal, {
+        uniqueTargets: 3,
+        occurrences: 5,
+      });
+      assert.deepStrictEqual(result.linkHealth.summary.external, {
+        uniqueTargets: 1,
+        occurrences: 1,
+      });
+      assert.strictEqual(result.linkHealth.summary.byHealth.healthy, checkedTargets.length);
+      assert.strictEqual(result.linkHealth.summary.affectedPages, 0);
+      assert.deepStrictEqual(result.linkHealth.issues.broken, []);
 
       const crawledAboutPages = result.pages.filter(
         (page) => page.url === `${baseUrl}/about`

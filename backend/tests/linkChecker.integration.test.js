@@ -170,6 +170,73 @@ async function runPostCrawlContractCheck() {
   const originalRunCrawl = crawlerService.runCrawl;
   const originalValidateTargetUrl = urlValidator.validateTargetUrl;
   let receivedOptions = null;
+  const mockedLinkChecks = {
+    uniqueTargets: 1,
+    processedTargets: 1,
+    uncheckedTargets: 0,
+    limitHit: false,
+    limits: { maxTargets: 200, concurrency: 4, maxRedirects: 5, timeoutMs: 5000 },
+  };
+  const mockedLinkHealth = {
+    summary: {
+      uniqueTargets: 1,
+      totalOccurrences: 1,
+      internal: { uniqueTargets: 1, occurrences: 1 },
+      external: { uniqueTargets: 0, occurrences: 0 },
+      byHealth: {
+        healthy: 0,
+        redirected: 1,
+        restricted: 0,
+        broken: 0,
+        unreachable: 0,
+        blocked: 0,
+        unchecked: 0,
+        unknown: 0,
+      },
+      brokenInternalTargets: 0,
+      brokenExternalTargets: 0,
+      affectedPages: 1,
+      classificationConflicts: 0,
+      invalidOccurrences: 0,
+      discardedOccurrences: 0,
+    },
+    targets: [{
+      normalizedUrl: "https://public.example/about",
+      classification: "internal",
+      classifications: ["internal"],
+      classificationConflict: false,
+      health: "redirected",
+      isBroken: false,
+      statusCode: 301,
+      finalUrl: "https://public.example/new-about",
+      finalStatusCode: 200,
+      redirectCount: 1,
+      redirectProblem: null,
+      redirectChain: [{
+        url: "https://public.example/about",
+        statusCode: 301,
+        location: "https://public.example/new-about",
+        responseTimeMs: 1,
+      }],
+      checkProblem: null,
+      occurrenceCount: 1,
+      affectedPageCount: 1,
+      affectedPages: ["https://public.example"],
+      anchors: ["About"],
+      severity: "medium",
+      priority: 2,
+    }],
+    issues: {
+      broken: [],
+      redirected: ["https://public.example/about"],
+      restricted: [],
+      unreachable: [],
+      blocked: [],
+      unchecked: [],
+      unknown: [],
+      conflicts: [],
+    },
+  };
 
   urlValidator.validateTargetUrl = async (targetUrl) => ({
     safe: true,
@@ -187,13 +254,8 @@ async function runPostCrawlContractCheck() {
       options,
       crawl: { status: "completed" },
       siteWide: {},
-      linkChecks: {
-        uniqueTargets: 1,
-        processedTargets: 1,
-        uncheckedTargets: 0,
-        limitHit: false,
-        limits: { maxTargets: 200, concurrency: 4, maxRedirects: 5, timeoutMs: 5000 },
-      },
+      linkChecks: mockedLinkChecks,
+      linkHealth: mockedLinkHealth,
       pages: [{
         status: "success",
         links: {
@@ -261,7 +323,8 @@ async function runPostCrawlContractCheck() {
       concurrency: 2,
       runLighthouse: false,
     });
-    assert.strictEqual(body.linkChecks.uniqueTargets, 1);
+    assert.deepStrictEqual(body.linkChecks, mockedLinkChecks);
+    assert.deepStrictEqual(body.linkHealth, mockedLinkHealth);
     assert.strictEqual(body.pages[0].links.internal[0].check.state, "redirect");
     assert.strictEqual(body.pages[0].links.internal[0].check.statusCode, 301);
     assert.strictEqual(body.pages[0].links.internal[0].check.finalState, "ok");
