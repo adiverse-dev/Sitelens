@@ -23,6 +23,22 @@ urlValidator.validateTargetUrl = async (url) => {
 
 const { runCrawl } = require("../src/services/crawler.service");
 
+function createTestDependencies(onCheck = () => {}) {
+  return {
+    checkLinkTarget: async (targetUrl) => {
+      onCheck(targetUrl);
+      return {
+        state: "ok",
+        statusCode: 200,
+        responseTimeMs: 1,
+        errorCode: null,
+        errorMessage: null,
+        location: null,
+      };
+    },
+  };
+}
+
 // ─── Test Server Setup ───────────────────────────────────────────────────────
 
 function buildTestApp() {
@@ -107,7 +123,7 @@ async function runTest(label, testFn) {
   try {
     await runTest("Test A — 1-page local crawl", async (label) => {
       const start = Date.now();
-      const result = await runCrawl(baseUrl + "/about", { maxPages: 1, maxDepth: 0, concurrency: 1, runLighthouse: false });
+      const result = await runCrawl(baseUrl + "/about", { maxPages: 1, maxDepth: 0, concurrency: 1, runLighthouse: false }, createTestDependencies());
       const finish = Date.now();
       printCrawlResult(label, start, finish, result);
       assert.strictEqual(result.crawl.pagesCrawled, 1, "Should crawl 1 page");
@@ -115,7 +131,7 @@ async function runTest(label, testFn) {
 
     await runTest("Test B — 2-page local crawl", async (label) => {
       const start = Date.now();
-      const result = await runCrawl(baseUrl + "/", { maxPages: 2, maxDepth: 1, concurrency: 1, runLighthouse: false });
+      const result = await runCrawl(baseUrl + "/", { maxPages: 2, maxDepth: 1, concurrency: 1, runLighthouse: false }, createTestDependencies());
       const finish = Date.now();
       printCrawlResult(label, start, finish, result);
       assert.strictEqual(result.crawl.pagesCrawled, 2, "Should crawl 2 pages");
@@ -123,7 +139,8 @@ async function runTest(label, testFn) {
 
     await runTest("Test C — 3-page local crawl", async (label) => {
       const start = Date.now();
-      const result = await runCrawl(baseUrl + "/", { maxPages: 3, maxDepth: 2, concurrency: 1, runLighthouse: false });
+      const checkedTargets = [];
+      const result = await runCrawl(baseUrl + "/", { maxPages: 3, maxDepth: 2, concurrency: 1, runLighthouse: false }, createTestDependencies((targetUrl) => checkedTargets.push(targetUrl)));
       const finish = Date.now();
       printCrawlResult(label, start, finish, result);
       assert.strictEqual(result.crawl.pagesCrawled, 3, "Should crawl 3 pages");
@@ -150,6 +167,16 @@ async function runTest(label, testFn) {
       assert.deepStrictEqual(aboutEvidence[0].rel, ["nofollow", "sponsored"]);
       assert.strictEqual(aboutEvidence[0].nofollow, true);
       assert.strictEqual(aboutEvidence[0].sourceUrl, `${baseUrl}/`);
+      assert.strictEqual(aboutEvidence[0].check.state, "ok");
+      assert.deepStrictEqual(aboutEvidence[0].check, aboutEvidence[1].check);
+      assert.strictEqual(rootPage.links.external[0].check.state, "ok");
+      assert.strictEqual(Object.hasOwn(rootPage.links.discarded[0], "check"), false);
+      assert.strictEqual(
+        checkedTargets.length,
+        new Set(checkedTargets).size,
+        "Every retained normalized target should be checked once"
+      );
+      assert.strictEqual(result.linkChecks.uniqueTargets, checkedTargets.length);
 
       const crawledAboutPages = result.pages.filter(
         (page) => page.url === `${baseUrl}/about`
@@ -168,7 +195,7 @@ async function runTest(label, testFn) {
       };
 
       const start = Date.now();
-      const result = await runCrawl(baseUrl + "/", { maxPages: 3, maxDepth: 2, concurrency: 2, runLighthouse: false });
+      const result = await runCrawl(baseUrl + "/", { maxPages: 3, maxDepth: 2, concurrency: 2, runLighthouse: false }, createTestDependencies());
       const finish = Date.now();
       
       Semaphore.prototype.acquire = originalAcquire; // restore immediately
@@ -189,7 +216,7 @@ async function runTest(label, testFn) {
       const p = errServer.address().port;
 
       const start = Date.now();
-      const result = await runCrawl(`http://127.0.0.1:${p}/error-seed`, { maxPages: 3, maxDepth: 1, concurrency: 2, runLighthouse: false });
+      const result = await runCrawl(`http://127.0.0.1:${p}/error-seed`, { maxPages: 3, maxDepth: 1, concurrency: 2, runLighthouse: false }, createTestDependencies());
       const finish = Date.now();
       
       errServer.close();

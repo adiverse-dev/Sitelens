@@ -11,10 +11,12 @@ const SUITES = Object.freeze({
     "crawlPolicy.test.js",
     "crawlerQueue.test.js",
     "urlNormalizer.test.js",
+    "linkCheckMapping.test.js",
     "siteAggregation.test.js",
   ]),
   integration: Object.freeze([
     "rateLimiter.test.js",
+    "linkChecker.integration.test.js",
     "urlDiscovery.test.js",
     "structuredLinks.test.js",
     "crawler.service.test.js",

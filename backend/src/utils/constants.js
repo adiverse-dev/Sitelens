@@ -30,8 +30,38 @@ const CRAWLER_MAX_DEPTH = Number(process.env.CRAWLER_MAX_DEPTH) || 3;
 const CRAWLER_CONCURRENCY = Number(process.env.CRAWLER_CONCURRENCY) || 2;
 // Per-page navigation + audit timeout in milliseconds.
 const CRAWLER_PAGE_TIMEOUT_MS = Number(process.env.CRAWLER_PAGE_TIMEOUT_MS) || 20000;
-// Timeout for lightweight HTTP requests made by the crawler (e.g. HEAD checks).
-const CRAWLER_REQUEST_TIMEOUT_MS = Number(process.env.CRAWLER_REQUEST_TIMEOUT_MS) || 10000;
+// Phase 6B link checks are deliberately independent from Playwright crawl limits.
+const LINK_CHECK_MAX_TARGETS_HARD_LIMIT = 1000;
+const LINK_CHECK_CONCURRENCY_HARD_LIMIT = 10;
+const CRAWLER_REQUEST_TIMEOUT_HARD_LIMIT_MS = 15000;
+
+function readBoundedInteger(name, fallback, minimum, maximum) {
+  const value = Number(process.env[name]);
+  if (!Number.isInteger(value) || value < minimum) return fallback;
+  return Math.min(value, maximum);
+}
+
+// Maximum unique retained link targets checked during one crawl.
+const LINK_CHECK_MAX_TARGETS = readBoundedInteger(
+  "LINK_CHECK_MAX_TARGETS",
+  200,
+  1,
+  LINK_CHECK_MAX_TARGETS_HARD_LIMIT
+);
+// Number of lightweight HTTP checks processed simultaneously.
+const LINK_CHECK_CONCURRENCY = readBoundedInteger(
+  "LINK_CHECK_CONCURRENCY",
+  4,
+  1,
+  LINK_CHECK_CONCURRENCY_HARD_LIMIT
+);
+// Total target-check deadline, including the optional HEAD-to-GET fallback.
+const CRAWLER_REQUEST_TIMEOUT_MS = readBoundedInteger(
+  "CRAWLER_REQUEST_TIMEOUT_MS",
+  5000,
+  100,
+  CRAWLER_REQUEST_TIMEOUT_HARD_LIMIT_MS
+);
 // Crawl rate limiter: 1 crawl request per IP per window (crawls are far heavier than audits).
 const CRAWL_RATE_LIMIT_WINDOW_MS = Number(process.env.CRAWL_RATE_LIMIT_WINDOW_MS) || 60000;
 const CRAWL_RATE_LIMIT_MAX_REQUESTS = Number(process.env.CRAWL_RATE_LIMIT_MAX_REQUESTS) || 1;
@@ -53,7 +83,12 @@ module.exports = {
   CRAWLER_MAX_DEPTH,
   CRAWLER_CONCURRENCY,
   CRAWLER_PAGE_TIMEOUT_MS,
+  LINK_CHECK_MAX_TARGETS,
+  LINK_CHECK_MAX_TARGETS_HARD_LIMIT,
+  LINK_CHECK_CONCURRENCY,
+  LINK_CHECK_CONCURRENCY_HARD_LIMIT,
   CRAWLER_REQUEST_TIMEOUT_MS,
+  CRAWLER_REQUEST_TIMEOUT_HARD_LIMIT_MS,
   CRAWL_RATE_LIMIT_WINDOW_MS,
   CRAWL_RATE_LIMIT_MAX_REQUESTS,
 };

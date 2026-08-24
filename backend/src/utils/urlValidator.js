@@ -1,6 +1,46 @@
 const dns = require("dns").promises;
 const net = require("net");
 
+const DISALLOWED_IPS = new net.BlockList();
+
+for (const [network, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+]) {
+  DISALLOWED_IPS.addSubnet(network, prefix, "ipv4");
+}
+
+for (const [network, prefix] of [
+  ["::", 96],
+  ["::ffff:0:0", 96],
+  ["64:ff9b:1::", 48],
+  ["100::", 64],
+  ["2001::", 32],
+  ["2001:2::", 48],
+  ["2001:10::", 28],
+  ["2001:20::", 28],
+  ["2001:db8::", 32],
+  ["2002::", 16],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["fec0::", 10],
+  ["ff00::", 8],
+]) {
+  DISALLOWED_IPS.addSubnet(network, prefix, "ipv6");
+}
+
 function isValidHttpUrl(value) {
   try {
     const parsedUrl = new URL(value);
@@ -18,38 +58,11 @@ const ALLOWED_PORTS = [80, 443];
 
 function isPrivateIp(ip) {
   if (net.isIPv4(ip)) {
-    const parts = ip.split(".").map(Number);
-    if (parts[0] === 0) return true;
-    if (parts[0] === 10) return true;
-    if (parts[0] === 127) return true;
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
-    if (parts[0] >= 224 && parts[0] <= 239) return true;
-    if (parts[0] >= 240 && parts[0] <= 255) return true;
-    return false;
+    return DISALLOWED_IPS.check(ip, "ipv4");
   }
 
   if (net.isIPv6(ip)) {
-    const normalized = ip.toLowerCase();
-    if (normalized === "::1") return true;
-    if (normalized === "::" || normalized === "0:0:0:0:0:0:0:0") return true;
-    if (normalized.startsWith("::ffff:")) {
-      const v4Part = ip.substring(7);
-      return isPrivateIp(v4Part);
-    }
-    if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
-    if (
-      normalized.startsWith("fe8") ||
-      normalized.startsWith("fe9") ||
-      normalized.startsWith("fea") ||
-      normalized.startsWith("feb")
-    ) {
-      return true;
-    }
-    if (normalized.startsWith("ff")) return true;
-    return false;
+    return DISALLOWED_IPS.check(ip, "ipv6");
   }
 
   return true;

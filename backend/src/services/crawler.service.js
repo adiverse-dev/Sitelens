@@ -41,6 +41,9 @@ const {
   CRAWLER_MAX_PAGES,
   CRAWLER_MAX_DEPTH,
   CRAWLER_CONCURRENCY,
+  LINK_CHECK_MAX_TARGETS,
+  LINK_CHECK_CONCURRENCY,
+  CRAWLER_REQUEST_TIMEOUT_MS,
 } = require("../utils/constants");
 const { normalizeUrl, dedupeUrls } = require("../utils/urlNormalizer");
 const { isAllowedByPolicy } = require("../utils/crawlPolicy");
@@ -51,6 +54,7 @@ const { auditRobotsTxt } = require("./robotsAudit.service");
 const { auditSitemap } = require("./sitemapAudit.service");
 const { aggregateSiteResults } = require("../utils/siteAggregator");
 const { Semaphore } = require("../utils/semaphore");
+const { applyLinkChecks } = require("./linkChecker.service");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPE DEFINITIONS
@@ -114,6 +118,7 @@ const { Semaphore } = require("../utils/semaphore");
  * @property {string}       seedUrl    - The URL the crawl started from.
  * @property {CrawlSummary} crawl      - High-level crawl statistics.
  * @property {Object|null}  siteWide   - Site-level aggregation (Phase 5.7).
+ * @property {Object}       linkChecks - Phase 6B unique-target check summary.
  * @property {Object[]}     pages      - Per-page audit results (Phase 5.6).
  */
 
@@ -148,9 +153,10 @@ const { Semaphore } = require("../utils/semaphore");
  * @param {string}      seedUrl - The starting URL for the crawl.
  *                                Must already be validated by the controller.
  * @param {CrawlOptions} options - Crawl configuration with defaults applied.
+ * @param {Object} [dependencies] - Internal dependency injection for offline tests.
  * @returns {Promise<CrawlResult>}
  */
-async function runCrawl(seedUrl, options) {
+async function runCrawl(seedUrl, options, dependencies = {}) {
   const resolvedOptions = _resolveOptions(options);
   const startTime = Date.now();
 
@@ -219,10 +225,15 @@ async function runCrawl(seedUrl, options) {
     pump(); // Start the engine
   });
 
+  const pages = Array.from(state.results.values());
+  const linkChecks = await applyLinkChecks(
+    pages,
+    {},
+    { checkTarget: dependencies.checkLinkTarget }
+  );
   const completedAt = Date.now();
 
-    const pages = Array.from(state.results.values());
-    const siteWide = aggregateSiteResults(pages, {
+  const siteWide = aggregateSiteResults(pages, {
       pagesDiscovered: state.visited.size,
       pagesCrawled: state.pagesCrawled,
       pagesSkipped: 0,
@@ -233,7 +244,7 @@ async function runCrawl(seedUrl, options) {
       durationMs: completedAt - startTime,
     }, { robots, sitemap });
 
-    return {
+  return {
       success: true,
       mode: "crawl",
       seedUrl,
@@ -250,9 +261,10 @@ async function runCrawl(seedUrl, options) {
         limitHit: state.pagesCrawled >= resolvedOptions.maxPages ? "pages" : null,
       },
       siteWide,
+      linkChecks,
       pages,
-    };
-  }
+  };
+}
 
 /**
  * Discover and classify all anchor links on the currently loaded Playwright page.
@@ -522,6 +534,17 @@ function _buildStubResult(seedUrl, options, status = "planned") {
       limitHit: null,
     },
     siteWide: null,   // Phase 5.7
+    linkChecks: {
+      uniqueTargets: 0,
+      processedTargets: 0,
+      uncheckedTargets: 0,
+      limitHit: false,
+      limits: {
+        maxTargets: LINK_CHECK_MAX_TARGETS,
+        concurrency: LINK_CHECK_CONCURRENCY,
+        timeoutMs: CRAWLER_REQUEST_TIMEOUT_MS,
+      },
+    },
     pages: [],        // Phase 5.6
   };
 }
